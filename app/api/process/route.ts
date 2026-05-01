@@ -1,3 +1,4 @@
+import { getAuthenticatedSupabase } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 
 const CATEGORIES = new Set([
@@ -64,6 +65,11 @@ function parseEntriesFromModelText(modelText: string): {
 }
 
 export async function POST(request: Request) {
+  const auth = await getAuthenticatedSupabase();
+  if (!auth.user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   let originalText = "";
 
   try {

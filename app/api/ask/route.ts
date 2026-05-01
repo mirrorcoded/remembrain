@@ -1,4 +1,4 @@
-import { createClient } from "@supabase/supabase-js";
+import { getAuthenticatedSupabase } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 
 function formatEntryTimestamp(iso: string): string {
@@ -18,19 +18,18 @@ function formatEntryTimestamp(iso: string): string {
 
 export async function POST(request: Request) {
   try {
+    const auth = await getAuthenticatedSupabase();
+    if (!auth.user || !auth.supabase) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const body = (await request.json()) as { question?: string };
     const question = body?.question?.trim();
     if (!question) {
       return NextResponse.json({ answer: "Please enter a question." });
     }
 
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-    if (!url || !key) {
-      return NextResponse.json({ answer: "Server configuration error." }, { status: 500 });
-    }
-
-    const supabase = createClient(url, key);
+    const { supabase } = auth;
     const { data: rows, error } = await supabase
       .from("entries")
       .select("id, text, category, created_at")

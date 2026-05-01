@@ -1,5 +1,6 @@
 "use client";
 
+import type { Session } from "@supabase/supabase-js";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { supabase } from "@/lib/supabase";
@@ -207,6 +208,14 @@ export default function Home() {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [askInput, setAskInput] = useState("");
   const [isAsking, setIsAsking] = useState(false);
+  const [session, setSession] = useState<Session | null>(null);
+  const [authHydrated, setAuthHydrated] = useState(false);
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authMode, setAuthMode] = useState<"signIn" | "signUp">("signIn");
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [authNotice, setAuthNotice] = useState<string | null>(null);
+  const [authBusy, setAuthBusy] = useState(false);
   const [speechRecognitionCtor, setSpeechRecognitionCtor] =
     useState<SpeechRecognitionConstructor | null>(null);
   const isSpeechSupported = speechRecognitionCtor !== null;
@@ -340,12 +349,49 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    function resetForSignedOut() {
+      setEntries([]);
+      setChatMessages([]);
+      setIsLoading(false);
+      setEditingEntryId(null);
+      setEditingText("");
+      setEditingCategory("other");
+      setSaveNoticeMessage("");
+    }
+
+    void supabase.auth.getSession().then(({ data: { session: initialSession } }) => {
+      setSession(initialSession);
+      if (!initialSession) {
+        resetForSignedOut();
+      }
+      setAuthHydrated(true);
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      setSession(nextSession);
+      if (!nextSession) {
+        resetForSignedOut();
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!authHydrated || !session) {
+      return;
+    }
+
     const timeoutId = setTimeout(() => {
       void loadEntries();
     }, 0);
 
     return () => clearTimeout(timeoutId);
-  }, [loadEntries]);
+  }, [authHydrated, session, loadEntries]);
 
   useEffect(() => {
     return () => {
@@ -374,6 +420,48 @@ export default function Home() {
     el.style.height = `${Math.min(Math.max(el.scrollHeight, 44), 160)}px`;
   }
 
+  async function handleLogout() {
+    setAuthBusy(true);
+    setAuthError(null);
+    await supabase.auth.signOut();
+    setAuthBusy(false);
+  }
+
+  async function handleAuthSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setAuthError(null);
+    setAuthNotice(null);
+
+    const email = authEmail.trim();
+    const password = authPassword;
+    if (!email || !password) {
+      setAuthError("Enter email and password.");
+      return;
+    }
+
+    setAuthBusy(true);
+    try {
+      if (authMode === "signUp") {
+        const { data, error } = await supabase.auth.signUp({ email, password });
+        if (error) {
+          setAuthError(error.message);
+          return;
+        }
+        if (data.user && !data.session) {
+          setAuthNotice("Check your email to confirm your account, then sign in.");
+        }
+        return;
+      }
+
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) {
+        setAuthError(error.message);
+      }
+    } finally {
+      setAuthBusy(false);
+    }
+  }
+
   async function handleAskSubmit(event?: FormEvent<HTMLFormElement>) {
     event?.preventDefault();
     const trimmedQuestion = askInput.trim();
@@ -393,11 +481,24 @@ export default function Home() {
     try {
       const response = await fetch("/api/ask", {
         method: "POST",
+        credentials: "same-origin",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({ question: trimmedQuestion }),
       });
+
+      if (response.status === 401) {
+        setChatMessages((previous) => [
+          ...previous,
+          {
+            role: "assistant",
+            content: "Your session expired. Please sign in again.",
+          },
+        ]);
+        return;
+      }
+
       const payload = (await response.json()) as { answer?: string };
       const answerText =
         typeof payload.answer === "string"
@@ -511,6 +612,7 @@ export default function Home() {
     try {
       const processResponse = await fetch("/api/process", {
         method: "POST",
+        credentials: "same-origin",
         headers: {
           "Content-Type": "application/json",
         },
@@ -519,6 +621,12 @@ export default function Home() {
           manualCategory: newEntryCategorySelection,
         }),
       });
+
+      if (processResponse.status === 401) {
+        setErrorMessage("Your session expired. Please sign in again.");
+        setIsSaving(false);
+        return;
+      }
 
       if (processResponse.ok) {
         const result = (await processResponse.json()) as { entries?: ProcessApiEntry[] };
@@ -776,14 +884,105 @@ export default function Home() {
     URL.revokeObjectURL(objectUrl);
   }
 
+  if (!authHydrated) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-zinc-100 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
+        <p className="text-sm text-zinc-600 dark:text-zinc-400">Loading…</p>
+      </div>
+    );
+  }
+
+  if (!session) {
+    return (
+      <div className="min-h-screen bg-zinc-100 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
+        <main className="mx-auto flex w-full max-w-md flex-col gap-6 px-4 py-16 sm:px-6">
+          <header className="space-y-1 text-center">
+            <h1 className="text-2xl font-semibold tracking-tight">Remembrain</h1>
+            <p className="text-sm text-zinc-600 dark:text-zinc-400">
+              Sign in to access your journal.
+            </p>
+          </header>
+
+          <form
+            onSubmit={(event) => void handleAuthSubmit(event)}
+            className="space-y-4 rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
+          >
+            <label className="block text-sm font-medium">
+              Email
+              <input
+                type="email"
+                autoComplete="email"
+                value={authEmail}
+                onChange={(event) => setAuthEmail(event.target.value)}
+                className="mt-1 w-full rounded-xl border border-zinc-300 bg-zinc-50 px-3 py-2 text-base outline-none transition focus:border-zinc-400 focus:ring-2 focus:ring-zinc-300 dark:border-zinc-700 dark:bg-zinc-950 dark:focus:border-zinc-500 dark:focus:ring-zinc-700"
+                required
+              />
+            </label>
+            <label className="block text-sm font-medium">
+              Password
+              <input
+                type="password"
+                autoComplete={authMode === "signUp" ? "new-password" : "current-password"}
+                value={authPassword}
+                onChange={(event) => setAuthPassword(event.target.value)}
+                className="mt-1 w-full rounded-xl border border-zinc-300 bg-zinc-50 px-3 py-2 text-base outline-none transition focus:border-zinc-400 focus:ring-2 focus:ring-zinc-300 dark:border-zinc-700 dark:bg-zinc-950 dark:focus:border-zinc-500 dark:focus:ring-zinc-700"
+                required
+              />
+            </label>
+
+            {authError ? (
+              <p className="text-sm text-red-700 dark:text-red-300">{authError}</p>
+            ) : null}
+            {authNotice ? (
+              <p className="text-sm text-emerald-800 dark:text-emerald-200">{authNotice}</p>
+            ) : null}
+
+            <button
+              type="submit"
+              disabled={authBusy}
+              className="w-full rounded-xl bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+            >
+              {authBusy ? "Please wait…" : authMode === "signUp" ? "Create account" : "Sign in"}
+            </button>
+
+            <p className="text-center text-sm text-zinc-600 dark:text-zinc-400">
+              {authMode === "signUp" ? "Already have an account?" : "Need an account?"}{" "}
+              <button
+                type="button"
+                className="font-medium text-zinc-900 underline underline-offset-2 dark:text-zinc-100"
+                onClick={() => {
+                  setAuthMode((mode) => (mode === "signUp" ? "signIn" : "signUp"));
+                  setAuthError(null);
+                  setAuthNotice(null);
+                }}
+              >
+                {authMode === "signUp" ? "Sign in" : "Sign up"}
+              </button>
+            </p>
+          </form>
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-zinc-100 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
       <main className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-8 sm:px-6">
-        <header className="space-y-1">
-          <h1 className="text-2xl font-semibold tracking-tight">Remembrain</h1>
-          <p className="text-sm text-zinc-600 dark:text-zinc-400">
-            Capture your thoughts and keep your memories close.
-          </p>
+        <header className="flex flex-wrap items-start justify-between gap-4">
+          <div className="space-y-1">
+            <h1 className="text-2xl font-semibold tracking-tight">Remembrain</h1>
+            <p className="text-sm text-zinc-600 dark:text-zinc-400">
+              Capture your thoughts and keep your memories close.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void handleLogout()}
+            disabled={authBusy}
+            className="shrink-0 rounded-full border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-800 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
+          >
+            Log out
+          </button>
         </header>
 
         <div className="flex flex-wrap gap-2">
