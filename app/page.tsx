@@ -46,6 +46,7 @@ type SpeechRecognitionLike = {
 type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
 type ExportFormat = "markdown" | "text" | "json";
 type ExportScope = "all" | "filtered" | "date-range";
+type NewEntryCategorySelection = "auto" | Category;
 
 function formatTimestamp(timestamp: string): string {
   const datePart = new Intl.DateTimeFormat("en-US", {
@@ -135,6 +136,8 @@ function sanitizeCategory(value: string): Category {
 
 export default function Home() {
   const [text, setText] = useState("");
+  const [newEntryCategorySelection, setNewEntryCategorySelection] =
+    useState<NewEntryCategorySelection>("auto");
   const [entries, setEntries] = useState<Entry[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState<"all" | Category>("all");
@@ -332,21 +335,25 @@ export default function Home() {
     setErrorMessage(null);
 
     let category: Category = "other";
-    try {
-      const categorizeResponse = await fetch("/api/categorize", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ text: trimmedText }),
-      });
+    if (newEntryCategorySelection === "auto") {
+      try {
+        const categorizeResponse = await fetch("/api/categorize", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ text: trimmedText }),
+        });
 
-      if (categorizeResponse.ok) {
-        const result = (await categorizeResponse.json()) as { category?: string };
-        category = sanitizeCategory(result.category ?? "other");
+        if (categorizeResponse.ok) {
+          const result = (await categorizeResponse.json()) as { category?: string };
+          category = sanitizeCategory(result.category ?? "other");
+        }
+      } catch {
+        category = "other";
       }
-    } catch {
-      category = "other";
+    } else {
+      category = newEntryCategorySelection;
     }
 
     const { error } = await supabase
@@ -360,6 +367,7 @@ export default function Home() {
     }
 
     setText("");
+    setNewEntryCategorySelection("auto");
     await loadEntries();
     setIsSaving(false);
   }
@@ -621,12 +629,46 @@ export default function Home() {
           {speechErrorMessage ? (
             <p className="mt-2 text-sm text-red-700 dark:text-red-300">{speechErrorMessage}</p>
           ) : null}
+          <div className="mt-3 space-y-2">
+            <p className="text-sm font-medium">Category</p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setNewEntryCategorySelection("auto")}
+                className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
+                  newEntryCategorySelection === "auto"
+                    ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+                    : "bg-zinc-200 text-zinc-700 hover:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
+                }`}
+              >
+                Auto
+              </button>
+              {ALL_CATEGORIES.map((category) => (
+                <button
+                  key={category}
+                  type="button"
+                  onClick={() => setNewEntryCategorySelection(category)}
+                  className={`rounded-full px-3 py-1.5 text-xs font-medium capitalize transition ${
+                    newEntryCategorySelection === category
+                      ? CATEGORY_BADGE_STYLES[category]
+                      : "bg-zinc-200 text-zinc-700 hover:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
+                  }`}
+                >
+                  {CATEGORY_LABELS[category]}
+                </button>
+              ))}
+            </div>
+          </div>
           <button
             type="submit"
             className="mt-3 w-full rounded-xl bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-zinc-700 active:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
             disabled={!text.trim() || isSaving}
           >
-            {isSaving ? "Categorizing..." : "Save"}
+            {isSaving
+              ? newEntryCategorySelection === "auto"
+                ? "Categorizing..."
+                : "Saving..."
+              : "Save"}
           </button>
         </form>
 
