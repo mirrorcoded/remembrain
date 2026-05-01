@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 import { supabase } from "@/lib/supabase";
 
@@ -48,6 +48,15 @@ const CATEGORY_BADGE_STYLES: Record<Category, string> = {
   other: "bg-zinc-200 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200",
 };
 
+const CATEGORY_ORDER: Category[] = [
+  "health",
+  "relationships",
+  "career",
+  "logistics",
+  "emotional",
+  "other",
+];
+
 function sanitizeCategory(value: string): Category {
   const normalizedCategory = value.trim().toLowerCase();
   switch (normalizedCategory) {
@@ -66,9 +75,32 @@ function sanitizeCategory(value: string): Category {
 export default function Home() {
   const [text, setText] = useState("");
   const [entries, setEntries] = useState<Entry[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [activeCategory, setActiveCategory] = useState<"all" | Category>("all");
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const availableCategories = useMemo(
+    () =>
+      CATEGORY_ORDER.filter((category) =>
+        entries.some((entry) => entry.category === category),
+      ),
+    [entries],
+  );
+
+  const filteredEntries = useMemo(() => {
+    const normalizedSearch = searchQuery.trim().toLowerCase();
+
+    return entries.filter((entry) => {
+      const matchesSearch =
+        normalizedSearch.length === 0 ||
+        entry.text.toLowerCase().includes(normalizedSearch);
+      const matchesCategory =
+        activeCategory === "all" || entry.category === activeCategory;
+      return matchesSearch && matchesCategory;
+    });
+  }, [entries, searchQuery, activeCategory]);
 
   const loadEntries = useCallback(async () => {
     setIsLoading(true);
@@ -195,28 +227,80 @@ export default function Home() {
               No entries yet. Start with your first memory.
             </p>
           ) : (
-            <ul className="space-y-3">
-              {entries.map((entry) => (
-                <li
-                  key={entry.id}
-                  className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                      {formatTimestamp(entry.created_at)}
-                    </p>
-                    <span
-                      className={`inline-flex rounded-full px-2 py-1 text-xs font-medium capitalize ${CATEGORY_BADGE_STYLES[entry.category]}`}
+            <>
+              <div className="space-y-3 rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+                <label htmlFor="entry-search" className="block text-sm font-medium">
+                  Search Entries
+                </label>
+                <input
+                  id="entry-search"
+                  type="search"
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  placeholder="Search by text..."
+                  className="w-full rounded-xl border border-zinc-300 bg-zinc-50 px-3 py-2 text-sm outline-none transition focus:border-zinc-400 focus:ring-2 focus:ring-zinc-300 dark:border-zinc-700 dark:bg-zinc-950 dark:focus:border-zinc-500 dark:focus:ring-zinc-700"
+                />
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setActiveCategory("all")}
+                    className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
+                      activeCategory === "all"
+                        ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+                        : "bg-zinc-200 text-zinc-700 hover:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
+                    }`}
+                  >
+                    All
+                  </button>
+                  {availableCategories.map((category) => (
+                    <button
+                      key={category}
+                      type="button"
+                      onClick={() => setActiveCategory(category)}
+                      className={`rounded-full px-3 py-1.5 text-xs font-medium capitalize transition ${
+                        activeCategory === category
+                          ? CATEGORY_BADGE_STYLES[category]
+                          : "bg-zinc-200 text-zinc-700 hover:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
+                      }`}
                     >
-                      {entry.category}
-                    </span>
-                  </div>
-                  <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed">
-                    {entry.text}
-                  </p>
-                </li>
-              ))}
-            </ul>
+                      {category}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-sm text-zinc-600 dark:text-zinc-400">
+                  Showing {filteredEntries.length} of {entries.length} entries
+                </p>
+              </div>
+
+              {filteredEntries.length === 0 ? (
+                <p className="rounded-2xl border border-dashed border-zinc-300 bg-white p-4 text-sm text-zinc-600 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400">
+                  No entries match your search.
+                </p>
+              ) : (
+                <ul className="space-y-3">
+                  {filteredEntries.map((entry) => (
+                    <li
+                      key={entry.id}
+                      className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                          {formatTimestamp(entry.created_at)}
+                        </p>
+                        <span
+                          className={`inline-flex rounded-full px-2 py-1 text-xs font-medium capitalize ${CATEGORY_BADGE_STYLES[entry.category]}`}
+                        >
+                          {entry.category}
+                        </span>
+                      </div>
+                      <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed">
+                        {entry.text}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </>
           )}
         </section>
       </main>
