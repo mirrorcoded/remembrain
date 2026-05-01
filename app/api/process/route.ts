@@ -6,6 +6,10 @@ const CATEGORIES = new Set([
   "career",
   "logistics",
   "emotional",
+  "finance",
+  "ideas",
+  "learning",
+  "reflection",
   "other",
 ]);
 
@@ -89,15 +93,25 @@ STEP 2 - Detect multi-topic entries:
   * 'had a great talk with Dan Bi about NYU' (one conversation)
 
 STEP 3 - Categorize each entry:
+Allowed categories (use exactly these lowercase names): health, relationships, career, logistics, emotional, finance, ideas, learning, reflection, other.
+
 Categories and when to use them:
-- health: medications, symptoms, doctor visits, body, sleep, diet, exercise, mental health
-- relationships: family, friends, romantic partner, social interactions, conflicts, conversations with people
-- career: work, jobs, applications, professional development, business, school
-- logistics: scheduling, travel, addresses, dates, locations, plans, biographical facts (birthday, age)
-- emotional: feelings, mood, internal experiences, anxiety, processing, reflection
+- health: medications, symptoms, doctor visits, body, sleep, diet, exercise, mental health, physical wellbeing
+- relationships: family, friends, romantic partner, social interactions, conflicts, conversations with people, anything about specific people in user's life
+- career: work, jobs, applications, professional development, business operations, school, professional networking
+- logistics: scheduling, travel, addresses, dates, locations, plans, biographical facts (age, birthdays, place of residence), administrative tasks (visas, documentation)
+- emotional: feelings, mood, internal experiences, anxiety, joy, anger, processing emotions in the moment
+- finance: money, spending, investments, bills, taxes, accounts, financial decisions, costs of things
+- ideas: product ideas, business ideas, creative thoughts, things to build, hypotheticals, brainstorms
+- learning: things read, watched, learned, want to learn, books, courses, articles, skills being developed (different from career - acquisition of knowledge/skills, not work)
+- reflection: pattern-noticing about oneself, self-observations, insights about behavior, meta-cognition, looking back on past experiences with new understanding
 - other: ONLY when truly nothing else fits
 
-Be aggressive about picking specific categories. 'I am 32 years old' is logistics (biographical fact). 'My birthday is May 19' is logistics. Don't reach for 'other' just because something is brief.
+The difference between emotional and reflection: emotional is feeling in the moment ("I'm angry today"). Reflection is observing patterns ("I notice I get angry on Sundays").
+
+The difference between career and learning: career is doing the work; learning is acquiring knowledge.
+
+Be aggressive about choosing specific categories. 'I am 32 years old' is logistics (biographical fact). 'My birthday is May 19' is logistics. Don't reach for 'other' just because something is brief.
 
 Return ONLY valid JSON:
 {

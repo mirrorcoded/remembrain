@@ -10,6 +10,10 @@ type Category =
   | "career"
   | "logistics"
   | "emotional"
+  | "finance"
+  | "ideas"
+  | "learning"
+  | "reflection"
   | "other";
 
 type Entry = {
@@ -85,11 +89,19 @@ const CATEGORY_BADGE_STYLES: Record<Category, string> = {
   relationships:
     "bg-pink-100 text-pink-800 dark:bg-pink-900/40 dark:text-pink-200",
   career:
-    "bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-200",
+    "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-200",
   logistics:
-    "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200",
+    "bg-zinc-300 text-zinc-800 dark:bg-zinc-700 dark:text-zinc-100",
   emotional:
     "bg-violet-100 text-violet-800 dark:bg-violet-900/40 dark:text-violet-200",
+  finance:
+    "bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-100",
+  ideas:
+    "bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-200",
+  learning:
+    "bg-teal-100 text-teal-800 dark:bg-teal-900/40 dark:text-teal-200",
+  reflection:
+    "bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-200",
   other: "bg-zinc-200 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200",
 };
 
@@ -99,17 +111,14 @@ const CATEGORY_ORDER: Category[] = [
   "career",
   "logistics",
   "emotional",
+  "finance",
+  "ideas",
+  "learning",
+  "reflection",
   "other",
 ];
 
-const ALL_CATEGORIES: Category[] = [
-  "health",
-  "relationships",
-  "career",
-  "logistics",
-  "emotional",
-  "other",
-];
+const ALL_CATEGORIES: Category[] = [...CATEGORY_ORDER];
 
 const CATEGORY_LABELS: Record<Category, string> = {
   health: "Health",
@@ -117,6 +126,10 @@ const CATEGORY_LABELS: Record<Category, string> = {
   career: "Career",
   logistics: "Logistics",
   emotional: "Emotional",
+  finance: "Finance",
+  ideas: "Ideas",
+  learning: "Learning",
+  reflection: "Reflection",
   other: "Other",
 };
 
@@ -128,6 +141,10 @@ function sanitizeCategory(value: string): Category {
     case "career":
     case "logistics":
     case "emotional":
+    case "finance":
+    case "ideas":
+    case "learning":
+    case "reflection":
     case "other":
       return normalizedCategory;
     default:
@@ -170,14 +187,6 @@ export default function Home() {
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const speechBaseTextRef = useRef("");
   const finalTranscriptRef = useRef("");
-
-  const availableCategories = useMemo(
-    () =>
-      CATEGORY_ORDER.filter((category) =>
-        entries.some((entry) => entry.category === category),
-      ),
-    [entries],
-  );
 
   const filteredEntries = useMemo(() => {
     const normalizedSearch = searchQuery.trim().toLowerCase();
@@ -750,18 +759,18 @@ export default function Home() {
                   >
                     All
                   </button>
-                  {availableCategories.map((category) => (
+                  {ALL_CATEGORIES.map((category) => (
                     <button
                       key={category}
                       type="button"
                       onClick={() => setActiveCategory(category)}
-                      className={`rounded-full px-3 py-1.5 text-xs font-medium capitalize transition ${
+                      className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
                         activeCategory === category
                           ? CATEGORY_BADGE_STYLES[category]
                           : "bg-zinc-200 text-zinc-700 hover:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
                       }`}
                     >
-                      {category}
+                      {CATEGORY_LABELS[category]}
                     </button>
                   ))}
                 </div>
@@ -798,15 +807,15 @@ export default function Home() {
                             >
                               {ALL_CATEGORIES.map((category) => (
                                 <option key={category} value={category}>
-                                  {category}
+                                  {CATEGORY_LABELS[category]}
                                 </option>
                               ))}
                             </select>
                           ) : (
                             <span
-                              className={`inline-flex rounded-full px-2 py-1 text-xs font-medium capitalize ${CATEGORY_BADGE_STYLES[entry.category]}`}
+                              className={`inline-flex rounded-full px-2 py-1 text-xs font-medium ${CATEGORY_BADGE_STYLES[entry.category]}`}
                             >
-                              {entry.category}
+                              {CATEGORY_LABELS[entry.category]}
                             </span>
                           )}
                           <button
