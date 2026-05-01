@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { supabase } from "@/lib/supabase";
 
@@ -18,6 +18,32 @@ type Entry = {
   created_at: string;
   category: Category;
 };
+
+type SpeechRecognitionResultLike = {
+  0: { transcript: string };
+  isFinal: boolean;
+};
+
+type SpeechRecognitionEventLike = Event & {
+  results: ArrayLike<SpeechRecognitionResultLike>;
+};
+
+type SpeechRecognitionErrorEventLike = Event & {
+  error?: string;
+};
+
+type SpeechRecognitionLike = {
+  lang: string;
+  interimResults: boolean;
+  continuous: boolean;
+  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
+  onerror: ((event: SpeechRecognitionErrorEventLike) => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+};
+
+type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
 
 function formatTimestamp(timestamp: string): string {
   const datePart = new Intl.DateTimeFormat("en-US", {
@@ -77,9 +103,19 @@ export default function Home() {
   const [entries, setEntries] = useState<Entry[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState<"all" | Category>("all");
+  const [isMounted, setIsMounted] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [speechErrorMessage, setSpeechErrorMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [speechRecognitionCtor, setSpeechRecognitionCtor] =
+    useState<SpeechRecognitionConstructor | null>(null);
+  const isSpeechSupported = speechRecognitionCtor !== null;
+
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const speechBaseTextRef = useRef("");
+  const finalTranscriptRef = useRef("");
 
   const availableCategories = useMemo(
     () =>
@@ -128,11 +164,110 @@ export default function Home() {
 
   useEffect(() => {
     const timeoutId = setTimeout(() => {
+      setIsMounted(true);
+
+      const speechWindow = window as Window & {
+        SpeechRecognition?: SpeechRecognitionConstructor;
+        webkitSpeechRecognition?: SpeechRecognitionConstructor;
+      };
+      const recognitionConstructor =
+        speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition ?? null;
+      setSpeechRecognitionCtor(() => recognitionConstructor);
+    }, 0);
+
+    return () => clearTimeout(timeoutId);
+  }, []);
+
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
       void loadEntries();
     }, 0);
 
     return () => clearTimeout(timeoutId);
   }, [loadEntries]);
+
+  useEffect(() => {
+    return () => {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+    };
+  }, []);
+
+  function composeSpeechText(base: string, transcript: string): string {
+    if (!transcript.trim()) {
+      return base;
+    }
+    if (!base.trim()) {
+      return transcript.trimStart();
+    }
+    return `${base}${base.endsWith(" ") || transcript.startsWith(" ") ? "" : " "}${transcript}`;
+  }
+
+  function startListening() {
+    if (!speechRecognitionCtor || isListening) {
+      return;
+    }
+
+    setSpeechErrorMessage(null);
+    speechBaseTextRef.current = text;
+    finalTranscriptRef.current = "";
+
+    const recognition = new speechRecognitionCtor();
+    recognition.lang = window.navigator.language;
+    recognition.interimResults = true;
+    recognition.continuous = false;
+
+    recognition.onresult = (event) => {
+      let finalTranscript = "";
+      let interimTranscript = "";
+
+      for (let index = 0; index < event.results.length; index += 1) {
+        const result = event.results[index];
+        const transcript = result[0]?.transcript ?? "";
+        if (result.isFinal) {
+          finalTranscript += transcript;
+        } else {
+          interimTranscript += transcript;
+        }
+      }
+
+      finalTranscriptRef.current = finalTranscript;
+      setText(
+        composeSpeechText(speechBaseTextRef.current, `${finalTranscript}${interimTranscript}`),
+      );
+    };
+
+    recognition.onerror = (event) => {
+      if (event.error === "not-allowed" || event.error === "service-not-allowed") {
+        setSpeechErrorMessage(
+          "Microphone permission was denied. Please allow microphone access and try again.",
+        );
+      } else {
+        setSpeechErrorMessage("Voice input could not start. Please try again.");
+      }
+      setIsListening(false);
+    };
+
+    recognition.onend = () => {
+      setText(composeSpeechText(speechBaseTextRef.current, finalTranscriptRef.current));
+      recognitionRef.current = null;
+      setIsListening(false);
+    };
+
+    recognitionRef.current = recognition;
+    recognition.start();
+    setIsListening(true);
+  }
+
+  function stopListening() {
+    if (!recognitionRef.current) {
+      return;
+    }
+
+    recognitionRef.current.stop();
+    setIsListening(false);
+  }
 
   async function handleSave(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -195,13 +330,32 @@ export default function Home() {
           <label htmlFor="entry" className="mb-2 block text-sm font-medium">
             New Journal Entry
           </label>
-          <textarea
-            id="entry"
-            value={text}
-            onChange={(event) => setText(event.target.value)}
-            placeholder="What are you thinking about?"
-            className="min-h-32 w-full resize-y rounded-xl border border-zinc-300 bg-zinc-50 px-3 py-2 text-base outline-none transition focus:border-zinc-400 focus:ring-2 focus:ring-zinc-300 dark:border-zinc-700 dark:bg-zinc-950 dark:focus:border-zinc-500 dark:focus:ring-zinc-700"
-          />
+          <div className="relative">
+            <textarea
+              id="entry"
+              value={text}
+              onChange={(event) => setText(event.target.value)}
+              placeholder="What are you thinking about?"
+              className="min-h-32 w-full resize-y rounded-xl border border-zinc-300 bg-zinc-50 px-3 py-2 pr-14 text-base outline-none transition focus:border-zinc-400 focus:ring-2 focus:ring-zinc-300 dark:border-zinc-700 dark:bg-zinc-950 dark:focus:border-zinc-500 dark:focus:ring-zinc-700"
+            />
+            {isMounted && isSpeechSupported ? (
+              <button
+                type="button"
+                onClick={isListening ? stopListening : startListening}
+                aria-label={isListening ? "Stop voice input" : "Start voice input"}
+                className={`absolute bottom-3 right-3 inline-flex h-10 min-w-10 items-center justify-center rounded-full px-3 text-xs font-medium transition ${
+                  isListening
+                    ? "animate-pulse bg-red-600 text-white hover:bg-red-500"
+                    : "bg-zinc-900 text-white hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+                }`}
+              >
+                {isListening ? "Listening..." : "Mic"}
+              </button>
+            ) : null}
+          </div>
+          {speechErrorMessage ? (
+            <p className="mt-2 text-sm text-red-700 dark:text-red-300">{speechErrorMessage}</p>
+          ) : null}
           <button
             type="submit"
             className="mt-3 w-full rounded-xl bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-zinc-700 active:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
