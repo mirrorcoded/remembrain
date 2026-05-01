@@ -156,6 +156,36 @@ const CATEGORY_LABELS: Record<Category, string> = {
   other: "Other",
 };
 
+const LAST_BACKUP_STORAGE_KEY = "remembrain_last_backup";
+const BACKUP_BANNER_SNOOZE_UNTIL_KEY = "remembrain_backup_banner_snooze_until";
+const BACKUP_APP_VERSION = "1.0";
+const BACKUP_STALE_MS = 30 * 24 * 60 * 60 * 1000;
+const BACKUP_BANNER_SNOOZE_MS = 7 * 24 * 60 * 60 * 1000;
+
+function formatBackupCalendarLabel(iso: string): string {
+  return new Intl.DateTimeFormat("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  }).format(new Date(iso));
+}
+
+function parseLastBackupMs(iso: string | null): number | null {
+  if (!iso) {
+    return null;
+  }
+  const t = new Date(iso).getTime();
+  return Number.isNaN(t) ? null : t;
+}
+
+function isBackupStale(lastBackupIso: string | null, nowMs: number): boolean {
+  const ms = parseLastBackupMs(lastBackupIso);
+  if (ms == null) {
+    return true;
+  }
+  return nowMs - ms > BACKUP_STALE_MS;
+}
+
 function sanitizeCategory(value: string): Category {
   const normalizedCategory = value.trim().toLowerCase();
   switch (normalizedCategory) {
@@ -216,6 +246,12 @@ export default function Home() {
   const [authError, setAuthError] = useState<string | null>(null);
   const [authNotice, setAuthNotice] = useState<string | null>(null);
   const [authBusy, setAuthBusy] = useState(false);
+  const [lastBackupIso, setLastBackupIso] = useState<string | null>(null);
+  const [bannerSnoozeUntilMs, setBannerSnoozeUntilMs] = useState<number | null>(null);
+  const [isBackupDownloading, setIsBackupDownloading] = useState(false);
+  const [backupNoticeMessage, setBackupNoticeMessage] = useState("");
+  const [backupErrorMessage, setBackupErrorMessage] = useState<string | null>(null);
+  const [clockTickMs, setClockTickMs] = useState(() => Date.now());
   const [speechRecognitionCtor, setSpeechRecognitionCtor] =
     useState<SpeechRecognitionConstructor | null>(null);
   const isSpeechSupported = speechRecognitionCtor !== null;
@@ -349,6 +385,23 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    if (!isMounted) {
+      return;
+    }
+    const timeoutId = setTimeout(() => {
+      try {
+        setLastBackupIso(localStorage.getItem(LAST_BACKUP_STORAGE_KEY));
+        const rawSnooze = localStorage.getItem(BACKUP_BANNER_SNOOZE_UNTIL_KEY);
+        const snoozeNum = rawSnooze ? Number(rawSnooze) : NaN;
+        setBannerSnoozeUntilMs(Number.isFinite(snoozeNum) ? snoozeNum : null);
+      } catch {
+        // ignore private mode / quota
+      }
+    }, 0);
+    return () => clearTimeout(timeoutId);
+  }, [isMounted]);
+
+  useEffect(() => {
     function resetForSignedOut() {
       setEntries([]);
       setChatMessages([]);
@@ -411,6 +464,19 @@ export default function Home() {
     });
   }, [chatMessages, isAsking, activeTab]);
 
+  useEffect(() => {
+    const id = window.setInterval(() => setClockTickMs(Date.now()), 60_000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  const backupNeedsReminder = isBackupStale(lastBackupIso, clockTickMs);
+  const bannerSnoozeActive =
+    bannerSnoozeUntilMs != null &&
+    Number.isFinite(bannerSnoozeUntilMs) &&
+    clockTickMs < bannerSnoozeUntilMs;
+  const showBackupReminderBanner =
+    isMounted && backupNeedsReminder && !bannerSnoozeActive;
+
   function adjustAskTextareaHeight() {
     const el = askTextareaRef.current;
     if (!el) {
@@ -418,6 +484,83 @@ export default function Home() {
     }
     el.style.height = "auto";
     el.style.height = `${Math.min(Math.max(el.scrollHeight, 44), 160)}px`;
+  }
+
+  async function handleDownloadFullBackup() {
+    setBackupErrorMessage(null);
+    setIsBackupDownloading(true);
+    try {
+      const { data, error } = await supabase
+        .from("entries")
+        .select("id, created_at, text, category, user_id")
+        .order("created_at", { ascending: true });
+
+      if (error) {
+        setBackupErrorMessage("Could not download backup. Please try again.");
+        setIsBackupDownloading(false);
+        return;
+      }
+
+      type BackupRow = {
+        id: number;
+        created_at: string;
+        text: string | null;
+        category: string | null;
+        user_id: string | null;
+      };
+
+      const rows = (data ?? []) as BackupRow[];
+      const exportDate = new Date().toISOString();
+      const payload = {
+        export_date: exportDate,
+        app_version: BACKUP_APP_VERSION,
+        entry_count: rows.length,
+        entries: rows.map((row) => ({
+          id: row.id,
+          created_at: row.created_at,
+          text: row.text ?? "",
+          category: row.category ?? "other",
+          user_id: row.user_id ?? null,
+        })),
+      };
+
+      const json = JSON.stringify(payload, null, 2);
+      const filename = `remembrain-backup-${formatLocalYmd(new Date())}.json`;
+      const blob = new Blob([json], { type: "application/json;charset=utf-8" });
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(objectUrl);
+
+      try {
+        localStorage.setItem(LAST_BACKUP_STORAGE_KEY, exportDate);
+      } catch {
+        // quota / private mode
+      }
+      setLastBackupIso(exportDate);
+      setClockTickMs(Date.now());
+      setBackupNoticeMessage("Backup downloaded successfully.");
+      setTimeout(() => setBackupNoticeMessage(""), 4000);
+    } catch {
+      setBackupErrorMessage("Could not download backup. Please try again.");
+    } finally {
+      setIsBackupDownloading(false);
+    }
+  }
+
+  function handleDismissBackupBanner() {
+    const until = Date.now() + BACKUP_BANNER_SNOOZE_MS;
+    try {
+      localStorage.setItem(BACKUP_BANNER_SNOOZE_UNTIL_KEY, String(until));
+    } catch {
+      // still hide in-session
+    }
+    setBannerSnoozeUntilMs(until);
+    setClockTickMs(Date.now());
   }
 
   async function handleLogout() {
@@ -1012,7 +1155,35 @@ export default function Home() {
 
         {activeTab === "entries" ? (
           <>
-        <form
+            {showBackupReminderBanner ? (
+              <div
+                role="status"
+                className="flex flex-col gap-3 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <p className="min-w-0 flex-1">
+                  It&apos;s been over a month since your last backup. Download one now.
+                </p>
+                <div className="flex shrink-0 flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void handleDownloadFullBackup()}
+                    disabled={isBackupDownloading}
+                    className="rounded-lg bg-zinc-900 px-3 py-2 text-xs font-medium text-white transition hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+                  >
+                    {isBackupDownloading ? "Downloading…" : "Download"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleDismissBackupBanner}
+                    className="rounded-lg border border-amber-800/40 bg-white px-3 py-2 text-xs font-medium text-amber-950 transition hover:bg-amber-100 dark:border-amber-600 dark:bg-amber-950 dark:text-amber-100 dark:hover:bg-amber-900"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
+            <form
           onSubmit={handleSave}
           className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
         >
@@ -1187,6 +1358,58 @@ export default function Home() {
           ) : null}
         </section>
 
+        <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+          <h2 className="text-lg font-medium">Backup</h2>
+          <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+            Download a complete JSON copy of all your entries (ignores search and filters).
+          </p>
+          {backupNoticeMessage ? (
+            <p className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800 dark:border-emerald-900/70 dark:bg-emerald-950/30 dark:text-emerald-200">
+              {backupNoticeMessage}
+            </p>
+          ) : null}
+          {backupErrorMessage ? (
+            <p className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900/70 dark:bg-red-950/30 dark:text-red-200">
+              {backupErrorMessage}
+            </p>
+          ) : null}
+          <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <button
+              type="button"
+              onClick={() => void handleDownloadFullBackup()}
+              disabled={isBackupDownloading}
+              className="w-full rounded-xl bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300 sm:w-auto"
+            >
+              {isBackupDownloading ? "Preparing backup…" : "Download Full Backup"}
+            </button>
+            <div
+              className={`text-sm ${
+                backupNeedsReminder
+                  ? "font-medium text-amber-800 dark:text-amber-200"
+                  : "text-zinc-600 dark:text-zinc-400"
+              }`}
+            >
+              {lastBackupIso ? (
+                <>
+                  Last backup: {formatBackupCalendarLabel(lastBackupIso)}
+                  {backupNeedsReminder ? (
+                    <span className="mt-1 block text-xs font-semibold uppercase tracking-wide text-amber-900 dark:text-amber-300">
+                      Backup recommended
+                    </span>
+                  ) : null}
+                </>
+              ) : (
+                <>
+                  No backup yet
+                  <span className="mt-1 block text-xs font-semibold uppercase tracking-wide text-amber-900 dark:text-amber-300">
+                    Backup recommended
+                  </span>
+                </>
+              )}
+            </div>
+          </div>
+        </section>
+
         <section className="space-y-3">
           <h2 className="text-lg font-medium">Saved Entries</h2>
           {saveNoticeMessage ? (
@@ -1210,17 +1433,28 @@ export default function Home() {
           ) : (
             <>
               <div className="space-y-3 rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-                <div className="flex items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
                   <label htmlFor="entry-search" className="block text-sm font-medium">
                     Search Entries
                   </label>
-                  <button
-                    type="button"
-                    onClick={() => setIsExportModalOpen(true)}
-                    className="rounded-lg border border-zinc-300 bg-zinc-50 px-3 py-1.5 text-xs font-medium transition hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-950 dark:hover:bg-zinc-900"
-                  >
-                    Export
-                  </button>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setIsExportModalOpen(true)}
+                      className="rounded-lg border border-zinc-300 bg-zinc-50 px-3 py-1.5 text-xs font-medium transition hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-950 dark:hover:bg-zinc-900"
+                    >
+                      Export
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleDownloadFullBackup()}
+                      disabled={isBackupDownloading}
+                      className="rounded-lg border border-zinc-300 bg-zinc-50 px-3 py-1.5 text-xs font-medium transition hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-950 dark:hover:bg-zinc-900"
+                      title="Full JSON backup (all entries)"
+                    >
+                      {isBackupDownloading ? "Backup…" : "Backup JSON"}
+                    </button>
+                  </div>
                 </div>
                 <input
                   id="entry-search"
