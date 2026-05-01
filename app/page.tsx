@@ -83,6 +83,15 @@ const CATEGORY_ORDER: Category[] = [
   "other",
 ];
 
+const ALL_CATEGORIES: Category[] = [
+  "health",
+  "relationships",
+  "career",
+  "logistics",
+  "emotional",
+  "other",
+];
+
 function sanitizeCategory(value: string): Category {
   const normalizedCategory = value.trim().toLowerCase();
   switch (normalizedCategory) {
@@ -106,6 +115,11 @@ export default function Home() {
   const [isMounted, setIsMounted] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [speechErrorMessage, setSpeechErrorMessage] = useState<string | null>(null);
+  const [editingEntryId, setEditingEntryId] = useState<number | null>(null);
+  const [editingText, setEditingText] = useState("");
+  const [editingCategory, setEditingCategory] = useState<Category>("other");
+  const [isUpdatingEntry, setIsUpdatingEntry] = useState(false);
+  const [deletingEntryId, setDeletingEntryId] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -313,6 +327,69 @@ export default function Home() {
     setIsSaving(false);
   }
 
+  function handleStartEdit(entry: Entry) {
+    setErrorMessage(null);
+    setEditingEntryId(entry.id);
+    setEditingText(entry.text);
+    setEditingCategory(entry.category);
+  }
+
+  function handleCancelEdit() {
+    setEditingEntryId(null);
+    setEditingText("");
+    setEditingCategory("other");
+    setIsUpdatingEntry(false);
+  }
+
+  async function handleSaveEdit(entryId: number) {
+    const trimmedText = editingText.trim();
+    if (!trimmedText || isUpdatingEntry) {
+      return;
+    }
+
+    setIsUpdatingEntry(true);
+    setErrorMessage(null);
+
+    const { error } = await supabase
+      .from("entries")
+      .update({ text: trimmedText, category: editingCategory })
+      .eq("id", entryId);
+
+    if (error) {
+      setErrorMessage("Could not update entry. Please try again.");
+      setIsUpdatingEntry(false);
+      return;
+    }
+
+    handleCancelEdit();
+    await loadEntries();
+  }
+
+  async function handleDeleteEntry(entryId: number) {
+    const confirmed = window.confirm("Delete this entry?");
+    if (!confirmed) {
+      return;
+    }
+
+    setDeletingEntryId(entryId);
+    setErrorMessage(null);
+
+    const { error } = await supabase.from("entries").delete().eq("id", entryId);
+
+    if (error) {
+      setErrorMessage("Could not delete entry. Please try again.");
+      setDeletingEntryId(null);
+      return;
+    }
+
+    if (editingEntryId === entryId) {
+      handleCancelEdit();
+    }
+
+    await loadEntries();
+    setDeletingEntryId(null);
+  }
+
   return (
     <div className="min-h-screen bg-zinc-100 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
       <main className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-8 sm:px-6">
@@ -437,19 +514,85 @@ export default function Home() {
                       key={entry.id}
                       className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
                     >
-                      <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-start justify-between gap-3">
                         <p className="text-xs text-zinc-500 dark:text-zinc-400">
                           {formatTimestamp(entry.created_at)}
                         </p>
-                        <span
-                          className={`inline-flex rounded-full px-2 py-1 text-xs font-medium capitalize ${CATEGORY_BADGE_STYLES[entry.category]}`}
-                        >
-                          {entry.category}
-                        </span>
+                        <div className="flex flex-wrap items-center justify-end gap-2">
+                          {editingEntryId === entry.id ? (
+                            <select
+                              value={editingCategory}
+                              onChange={(event) =>
+                                setEditingCategory(
+                                  sanitizeCategory(event.target.value),
+                                )
+                              }
+                              className="rounded-lg border border-zinc-300 bg-zinc-50 px-2 py-1 text-xs outline-none transition focus:border-zinc-400 focus:ring-2 focus:ring-zinc-300 dark:border-zinc-700 dark:bg-zinc-950 dark:focus:border-zinc-500 dark:focus:ring-zinc-700"
+                            >
+                              {ALL_CATEGORIES.map((category) => (
+                                <option key={category} value={category}>
+                                  {category}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <span
+                              className={`inline-flex rounded-full px-2 py-1 text-xs font-medium capitalize ${CATEGORY_BADGE_STYLES[entry.category]}`}
+                            >
+                              {entry.category}
+                            </span>
+                          )}
+                          <button
+                            type="button"
+                            aria-label="Edit entry"
+                            onClick={() => handleStartEdit(entry)}
+                            disabled={isUpdatingEntry || deletingEntryId === entry.id}
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-300 bg-zinc-50 text-sm transition hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-950 dark:hover:bg-zinc-900"
+                          >
+                            ✏️
+                          </button>
+                          <button
+                            type="button"
+                            aria-label="Delete entry"
+                            onClick={() => void handleDeleteEntry(entry.id)}
+                            disabled={isUpdatingEntry || deletingEntryId === entry.id}
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-300 bg-zinc-50 text-sm transition hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-950 dark:hover:bg-zinc-900"
+                          >
+                            {deletingEntryId === entry.id ? "…" : "🗑️"}
+                          </button>
+                        </div>
                       </div>
-                      <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed">
-                        {entry.text}
-                      </p>
+                      {editingEntryId === entry.id ? (
+                        <>
+                          <textarea
+                            value={editingText}
+                            onChange={(event) => setEditingText(event.target.value)}
+                            className="mt-2 min-h-24 w-full resize-y rounded-xl border border-zinc-300 bg-zinc-50 px-3 py-2 text-base outline-none transition focus:border-zinc-400 focus:ring-2 focus:ring-zinc-300 dark:border-zinc-700 dark:bg-zinc-950 dark:focus:border-zinc-500 dark:focus:ring-zinc-700"
+                          />
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onClick={() => void handleSaveEdit(entry.id)}
+                              disabled={!editingText.trim() || isUpdatingEntry}
+                              className="rounded-lg bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+                            >
+                              {isUpdatingEntry ? "Saving..." : "Save"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleCancelEdit}
+                              disabled={isUpdatingEntry}
+                              className="rounded-lg border border-zinc-300 bg-zinc-50 px-3 py-1.5 text-xs font-medium transition hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-950 dark:hover:bg-zinc-900"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </>
+                      ) : (
+                        <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed">
+                          {entry.text}
+                        </p>
+                      )}
                     </li>
                   ))}
                 </ul>
