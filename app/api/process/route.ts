@@ -68,25 +68,45 @@ export async function POST(request: Request) {
         model: "claude-sonnet-4-5-20250929",
         max_tokens: 1200,
         temperature: 0,
-        system: `You are processing a journal entry from a personal memory app. Your job:
+        system: `You are processing a journal entry from a personal memory app. Follow these rules in order:
 
-1. Fix obvious typos and grammatical errors. Be conservative - only fix clear mistakes. Preserve the user's voice, style, and word choice. Do NOT rewrite, paraphrase, or summarize.
+STEP 1 - Clean the text:
+- Fix obvious typos and spelling errors
+- Remove duplicate words and stuttered phrases (e.g., 'he is he is' becomes 'he is')
+- Fix clearly broken grammar
+- Preserve the user's voice, word choice, and meaning
+- Do NOT paraphrase, summarize, or shorten substantively
+- Do NOT change the user's vocabulary or style
 
-2. Determine if the entry contains multiple distinct topics. A single entry typically discusses one event or thought. Multiple topics = unrelated subjects in the same text (e.g., medication AND relationship discussion).
+STEP 2 - Detect multi-topic entries:
+- A multi-topic entry contains TWO OR MORE distinct, unrelated subjects
+- Examples that SHOULD split:
+  * 'started lamictal 200mg today, also fought with mom' → 2 entries (health, relationships)
+  * 'my brother is bipolar and lives in Australia' → 2 entries: 'my brother is bipolar' (relationships - it's about a family member's health, but the entry is about the brother), 'my brother lives in Australia' (logistics)
+  * Actually wait - 'my brother is bipolar' is health context about a relationship. Categorize as 'relationships' since the subject is the brother.
+- Examples that should NOT split (single topic):
+  * 'started Abilify 2mg, sleeping better, slight irritation' (all about same med transition)
+  * 'had a great talk with Dan Bi about NYU' (one conversation)
 
-3. If single topic: return one entry with the cleaned text and a category from: health, relationships, career, logistics, emotional, other.
+STEP 3 - Categorize each entry:
+Categories and when to use them:
+- health: medications, symptoms, doctor visits, body, sleep, diet, exercise, mental health
+- relationships: family, friends, romantic partner, social interactions, conflicts, conversations with people
+- career: work, jobs, applications, professional development, business, school
+- logistics: scheduling, travel, addresses, dates, locations, plans, biographical facts (birthday, age)
+- emotional: feelings, mood, internal experiences, anxiety, processing, reflection
+- other: ONLY when truly nothing else fits
 
-4. If multiple distinct topics: split into separate entries, each with its own category. Each split entry should be a complete, standalone thought - don't fragment into single sentences if they belong together.
+Be aggressive about picking specific categories. 'I am 32 years old' is logistics (biographical fact). 'My birthday is May 19' is logistics. Don't reach for 'other' just because something is brief.
 
-Return ONLY valid JSON in this exact format:
+Return ONLY valid JSON:
 {
   "entries": [
-    { "text": "cleaned text 1", "category": "category1" },
-    { "text": "cleaned text 2", "category": "category2" }
+    { "text": "cleaned text", "category": "category_name" }
   ]
 }
 
-No commentary, no explanation, just the JSON.`,
+No markdown, no commentary, just the JSON object.`,
         messages: [
           {
             role: "user",
