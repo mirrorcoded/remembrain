@@ -1,14 +1,14 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
+
+import { supabase } from "@/lib/supabase";
 
 type Entry = {
-  id: string;
+  id: number;
   text: string;
-  timestamp: string;
+  created_at: string;
 };
-
-const STORAGE_KEY = "remembrain.entries";
 
 function formatTimestamp(timestamp: string): string {
   const datePart = new Intl.DateTimeFormat("en-US", {
@@ -28,44 +28,59 @@ function formatTimestamp(timestamp: string): string {
 export default function Home() {
   const [text, setText] = useState("");
   const [entries, setEntries] = useState<Entry[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  useEffect(() => {
-    const savedEntries = localStorage.getItem(STORAGE_KEY);
+  const loadEntries = useCallback(async () => {
+    setIsLoading(true);
+    setErrorMessage(null);
 
-    if (!savedEntries) {
+    const { data, error } = await supabase
+      .from("entries")
+      .select("id, created_at, text")
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      setErrorMessage("Could not load entries. Please try again.");
+      setIsLoading(false);
       return;
     }
 
-    try {
-      const parsedEntries = JSON.parse(savedEntries) as Entry[];
-      if (Array.isArray(parsedEntries)) {
-        setEntries(parsedEntries);
-      }
-    } catch {
-      localStorage.removeItem(STORAGE_KEY);
-    }
+    setEntries(data ?? []);
+    setIsLoading(false);
   }, []);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
-  }, [entries]);
+    const timeoutId = setTimeout(() => {
+      void loadEntries();
+    }, 0);
 
-  function handleSave(event: FormEvent<HTMLFormElement>) {
+    return () => clearTimeout(timeoutId);
+  }, [loadEntries]);
+
+  async function handleSave(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     const trimmedText = text.trim();
-    if (!trimmedText) {
+    if (!trimmedText || isSaving) {
       return;
     }
 
-    const newEntry: Entry = {
-      id: crypto.randomUUID(),
-      text: trimmedText,
-      timestamp: new Date().toISOString(),
-    };
+    setIsSaving(true);
+    setErrorMessage(null);
 
-    setEntries((prevEntries) => [newEntry, ...prevEntries]);
+    const { error } = await supabase.from("entries").insert({ text: trimmedText });
+
+    if (error) {
+      setErrorMessage("Could not save entry. Please try again.");
+      setIsSaving(false);
+      return;
+    }
+
     setText("");
+    await loadEntries();
+    setIsSaving(false);
   }
 
   return (
@@ -103,7 +118,16 @@ export default function Home() {
 
         <section className="space-y-3">
           <h2 className="text-lg font-medium">Saved Entries</h2>
-          {entries.length === 0 ? (
+          {errorMessage ? (
+            <p className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900/70 dark:bg-red-950/30 dark:text-red-200">
+              {errorMessage}
+            </p>
+          ) : null}
+          {isLoading ? (
+            <p className="rounded-2xl border border-dashed border-zinc-300 bg-white p-4 text-sm text-zinc-600 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400">
+              Loading entries...
+            </p>
+          ) : entries.length === 0 ? (
             <p className="rounded-2xl border border-dashed border-zinc-300 bg-white p-4 text-sm text-zinc-600 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400">
               No entries yet. Start with your first memory.
             </p>
@@ -115,7 +139,7 @@ export default function Home() {
                   className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
                 >
                   <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                    {formatTimestamp(entry.timestamp)}
+                    {formatTimestamp(entry.created_at)}
                   </p>
                   <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed">
                     {entry.text}
