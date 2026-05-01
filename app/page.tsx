@@ -44,6 +44,8 @@ type SpeechRecognitionLike = {
 };
 
 type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
+type ExportFormat = "markdown" | "text" | "json";
+type ExportScope = "all" | "filtered" | "date-range";
 
 function formatTimestamp(timestamp: string): string {
   const datePart = new Intl.DateTimeFormat("en-US", {
@@ -58,6 +60,21 @@ function formatTimestamp(timestamp: string): string {
   }).format(new Date(timestamp));
 
   return `${datePart} at ${timePart}`;
+}
+
+function formatDateHeading(timestamp: string): string {
+  return new Intl.DateTimeFormat("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  }).format(new Date(timestamp));
+}
+
+function formatTimeOnly(timestamp: string): string {
+  return new Intl.DateTimeFormat("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(timestamp));
 }
 
 const CATEGORY_BADGE_STYLES: Record<Category, string> = {
@@ -92,6 +109,15 @@ const ALL_CATEGORIES: Category[] = [
   "other",
 ];
 
+const CATEGORY_LABELS: Record<Category, string> = {
+  health: "Health",
+  relationships: "Relationships",
+  career: "Career",
+  logistics: "Logistics",
+  emotional: "Emotional",
+  other: "Other",
+};
+
 function sanitizeCategory(value: string): Category {
   const normalizedCategory = value.trim().toLowerCase();
   switch (normalizedCategory) {
@@ -120,6 +146,15 @@ export default function Home() {
   const [editingCategory, setEditingCategory] = useState<Category>("other");
   const [isUpdatingEntry, setIsUpdatingEntry] = useState(false);
   const [deletingEntryId, setDeletingEntryId] = useState<number | null>(null);
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [exportFormat, setExportFormat] = useState<ExportFormat>("markdown");
+  const [exportScope, setExportScope] = useState<ExportScope>("all");
+  const [exportStartDate, setExportStartDate] = useState("");
+  const [exportEndDate, setExportEndDate] = useState("");
+  const [selectedExportCategories, setSelectedExportCategories] = useState<Category[]>(
+    ALL_CATEGORIES,
+  );
+  const [copyFeedback, setCopyFeedback] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -151,6 +186,8 @@ export default function Home() {
       return matchesSearch && matchesCategory;
     });
   }, [entries, searchQuery, activeCategory]);
+
+  const isFilterActive = searchQuery.trim().length > 0 || activeCategory !== "all";
 
   const loadEntries = useCallback(async () => {
     setIsLoading(true);
@@ -390,6 +427,157 @@ export default function Home() {
     setDeletingEntryId(null);
   }
 
+  function toggleExportCategory(category: Category) {
+    setSelectedExportCategories((previousCategories) =>
+      previousCategories.includes(category)
+        ? previousCategories.filter((item) => item !== category)
+        : [...previousCategories, category],
+    );
+  }
+
+  const exportableEntries = useMemo(() => {
+    const sourceEntries = exportScope === "filtered" ? filteredEntries : entries;
+
+    return sourceEntries.filter((entry) => {
+      if (!selectedExportCategories.includes(entry.category)) {
+        return false;
+      }
+
+      if (exportScope !== "date-range") {
+        return true;
+      }
+
+      const entryDate = new Date(entry.created_at);
+      const entryDateValue = new Date(
+        entryDate.getFullYear(),
+        entryDate.getMonth(),
+        entryDate.getDate(),
+      ).getTime();
+
+      if (exportStartDate) {
+        const startDateValue = new Date(`${exportStartDate}T00:00:00`).getTime();
+        if (entryDateValue < startDateValue) {
+          return false;
+        }
+      }
+
+      if (exportEndDate) {
+        const endDateValue = new Date(`${exportEndDate}T00:00:00`).getTime();
+        if (entryDateValue > endDateValue) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [
+    entries,
+    filteredEntries,
+    exportScope,
+    selectedExportCategories,
+    exportStartDate,
+    exportEndDate,
+  ]);
+
+  function buildMarkdownExport(entriesToExport: Entry[]): string {
+    const lines: string[] = [
+      "# Remembrain Export",
+      `Generated: ${new Date().toLocaleString()}`,
+      `Total entries: ${entriesToExport.length}`,
+      "",
+    ];
+
+    let currentDateHeading = "";
+    entriesToExport.forEach((entry) => {
+      const dateHeading = formatDateHeading(entry.created_at);
+      if (dateHeading !== currentDateHeading) {
+        currentDateHeading = dateHeading;
+        lines.push(`## ${dateHeading}`);
+      }
+
+      lines.push(
+        `- ${formatTimeOnly(entry.created_at)} - ${CATEGORY_LABELS[entry.category]}`,
+        `${entry.text}`,
+        "",
+      );
+    });
+
+    return lines.join("\n").trim();
+  }
+
+  function buildTextExport(entriesToExport: Entry[]): string {
+    const lines: string[] = [
+      "Remembrain Export",
+      `Generated: ${new Date().toLocaleString()}`,
+      `Total entries: ${entriesToExport.length}`,
+      "",
+    ];
+
+    let currentDateHeading = "";
+    entriesToExport.forEach((entry) => {
+      const dateHeading = formatDateHeading(entry.created_at);
+      if (dateHeading !== currentDateHeading) {
+        currentDateHeading = dateHeading;
+        lines.push(dateHeading);
+      }
+
+      lines.push(
+        `${formatTimeOnly(entry.created_at)} - ${CATEGORY_LABELS[entry.category]}`,
+        `${entry.text}`,
+        "",
+      );
+    });
+
+    return lines.join("\n").trim();
+  }
+
+  const exportContent = useMemo(() => {
+    if (exportFormat === "json") {
+      return JSON.stringify(
+        exportableEntries.map((entry) => ({
+          id: entry.id,
+          created_at: entry.created_at,
+          text: entry.text,
+          category: entry.category,
+        })),
+        null,
+        2,
+      );
+    }
+
+    if (exportFormat === "text") {
+      return buildTextExport(exportableEntries);
+    }
+
+    return buildMarkdownExport(exportableEntries);
+  }, [exportFormat, exportableEntries]);
+
+  async function handleCopyExport() {
+    try {
+      await navigator.clipboard.writeText(exportContent);
+      setCopyFeedback("Copied!");
+      setTimeout(() => setCopyFeedback(""), 1500);
+    } catch {
+      setCopyFeedback("Copy failed");
+      setTimeout(() => setCopyFeedback(""), 1500);
+    }
+  }
+
+  function handleDownloadExport() {
+    const extension = exportFormat === "markdown" ? "md" : exportFormat === "text" ? "txt" : "json";
+    const datePart = new Date().toISOString().slice(0, 10);
+    const filename = `remembrain-export-${datePart}.${extension}`;
+    const blob = new Blob([exportContent], { type: "text/plain;charset=utf-8" });
+    const objectUrl = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = objectUrl;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(objectUrl);
+  }
+
   return (
     <div className="min-h-screen bg-zinc-100 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
       <main className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-8 sm:px-6">
@@ -460,9 +648,18 @@ export default function Home() {
           ) : (
             <>
               <div className="space-y-3 rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-                <label htmlFor="entry-search" className="block text-sm font-medium">
-                  Search Entries
-                </label>
+                <div className="flex items-center justify-between gap-3">
+                  <label htmlFor="entry-search" className="block text-sm font-medium">
+                    Search Entries
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setIsExportModalOpen(true)}
+                    className="rounded-lg border border-zinc-300 bg-zinc-50 px-3 py-1.5 text-xs font-medium transition hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-950 dark:hover:bg-zinc-900"
+                  >
+                    Export
+                  </button>
+                </div>
                 <input
                   id="entry-search"
                   type="search"
@@ -601,6 +798,159 @@ export default function Home() {
           )}
         </section>
       </main>
+      {isExportModalOpen ? (
+        <div
+          className="fixed inset-0 z-40 bg-zinc-950/40 px-4 py-6"
+          role="presentation"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) {
+              setIsExportModalOpen(false);
+            }
+          }}
+        >
+          <div className="mx-auto w-full max-w-lg rounded-2xl border border-zinc-200 bg-white p-4 shadow-xl dark:border-zinc-800 dark:bg-zinc-900">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <h3 className="text-base font-semibold">Export Entries</h3>
+              <button
+                type="button"
+                onClick={() => setIsExportModalOpen(false)}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-300 bg-zinc-50 text-sm transition hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-950 dark:hover:bg-zinc-900"
+                aria-label="Close export modal"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Format</p>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { id: "markdown", label: "Markdown (.md)" },
+                    { id: "text", label: "Plain text (.txt)" },
+                    { id: "json", label: "JSON (.json)" },
+                  ].map((option) => (
+                    <button
+                      key={option.id}
+                      type="button"
+                      onClick={() => setExportFormat(option.id as ExportFormat)}
+                      className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
+                        exportFormat === option.id
+                          ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+                          : "bg-zinc-200 text-zinc-700 hover:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
+                      }`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Scope</p>
+                <div className="space-y-1 text-sm">
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="radio"
+                      name="export-scope"
+                      value="all"
+                      checked={exportScope === "all"}
+                      onChange={() => setExportScope("all")}
+                    />
+                    All entries
+                  </label>
+                  {isFilterActive ? (
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="radio"
+                        name="export-scope"
+                        value="filtered"
+                        checked={exportScope === "filtered"}
+                        onChange={() => setExportScope("filtered")}
+                      />
+                      Currently filtered entries
+                    </label>
+                  ) : null}
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="radio"
+                      name="export-scope"
+                      value="date-range"
+                      checked={exportScope === "date-range"}
+                      onChange={() => setExportScope("date-range")}
+                    />
+                    By date range
+                  </label>
+                </div>
+                {exportScope === "date-range" ? (
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    <label className="text-xs">
+                      Start date
+                      <input
+                        type="date"
+                        value={exportStartDate}
+                        onChange={(event) => setExportStartDate(event.target.value)}
+                        className="mt-1 w-full rounded-lg border border-zinc-300 bg-zinc-50 px-2 py-1.5 text-sm outline-none transition focus:border-zinc-400 focus:ring-2 focus:ring-zinc-300 dark:border-zinc-700 dark:bg-zinc-950 dark:focus:border-zinc-500 dark:focus:ring-zinc-700"
+                      />
+                    </label>
+                    <label className="text-xs">
+                      End date
+                      <input
+                        type="date"
+                        value={exportEndDate}
+                        onChange={(event) => setExportEndDate(event.target.value)}
+                        className="mt-1 w-full rounded-lg border border-zinc-300 bg-zinc-50 px-2 py-1.5 text-sm outline-none transition focus:border-zinc-400 focus:ring-2 focus:ring-zinc-300 dark:border-zinc-700 dark:bg-zinc-950 dark:focus:border-zinc-500 dark:focus:ring-zinc-700"
+                      />
+                    </label>
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Categories</p>
+                <div className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-3">
+                  {ALL_CATEGORIES.map((category) => (
+                    <label key={category} className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={selectedExportCategories.includes(category)}
+                        onChange={() => toggleExportCategory(category)}
+                      />
+                      {CATEGORY_LABELS[category]}
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <p className="text-sm text-zinc-600 dark:text-zinc-400">
+                {exportableEntries.length} entries selected for export
+              </p>
+
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => void handleCopyExport()}
+                  className="rounded-lg bg-zinc-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+                >
+                  Copy to Clipboard
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDownloadExport}
+                  className="rounded-lg border border-zinc-300 bg-zinc-50 px-3 py-2 text-sm font-medium transition hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-950 dark:hover:bg-zinc-900"
+                >
+                  Download File
+                </button>
+                {copyFeedback ? (
+                  <span className="self-center text-sm text-emerald-700 dark:text-emerald-300">
+                    {copyFeedback}
+                  </span>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
