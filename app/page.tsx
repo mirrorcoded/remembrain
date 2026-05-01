@@ -52,6 +52,7 @@ type ExportFormat = "markdown" | "text" | "json";
 type ExportScope = "all" | "filtered" | "date-range";
 type NewEntryCategorySelection = "auto" | Category;
 type ProcessApiEntry = { text?: string; category?: string };
+type ChatMessage = { role: "user" | "assistant"; content: string };
 
 function formatTimestamp(timestamp: string): string {
   const datePart = new Intl.DateTimeFormat("en-US", {
@@ -202,6 +203,10 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<"entries" | "ask">("entries");
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [askInput, setAskInput] = useState("");
+  const [isAsking, setIsAsking] = useState(false);
   const [speechRecognitionCtor, setSpeechRecognitionCtor] =
     useState<SpeechRecognitionConstructor | null>(null);
   const isSpeechSupported = speechRecognitionCtor !== null;
@@ -209,6 +214,8 @@ export default function Home() {
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const speechBaseTextRef = useRef("");
   const finalTranscriptRef = useRef("");
+  const chatScrollRef = useRef<HTMLDivElement | null>(null);
+  const askTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   const statsCategoryRows = useMemo(() => {
     const counts: Record<Category, number> = {
@@ -347,6 +354,68 @@ export default function Home() {
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (activeTab !== "ask") {
+      return;
+    }
+    chatScrollRef.current?.scrollTo({
+      top: chatScrollRef.current.scrollHeight,
+      behavior: "smooth",
+    });
+  }, [chatMessages, isAsking, activeTab]);
+
+  function adjustAskTextareaHeight() {
+    const el = askTextareaRef.current;
+    if (!el) {
+      return;
+    }
+    el.style.height = "auto";
+    el.style.height = `${Math.min(Math.max(el.scrollHeight, 44), 160)}px`;
+  }
+
+  async function handleAskSubmit(event?: FormEvent<HTMLFormElement>) {
+    event?.preventDefault();
+    const trimmedQuestion = askInput.trim();
+    if (!trimmedQuestion || isAsking || entries.length === 0) {
+      return;
+    }
+
+    setAskInput("");
+    const textarea = askTextareaRef.current;
+    if (textarea) {
+      textarea.style.height = "auto";
+    }
+
+    setChatMessages((previous) => [...previous, { role: "user", content: trimmedQuestion }]);
+    setIsAsking(true);
+
+    try {
+      const response = await fetch("/api/ask", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ question: trimmedQuestion }),
+      });
+      const payload = (await response.json()) as { answer?: string };
+      const answerText =
+        typeof payload.answer === "string"
+          ? payload.answer
+          : "Something went wrong. Please try again.";
+      setChatMessages((previous) => [...previous, { role: "assistant", content: answerText }]);
+    } catch {
+      setChatMessages((previous) => [
+        ...previous,
+        {
+          role: "assistant",
+          content: "Something went wrong. Please try again.",
+        },
+      ]);
+    } finally {
+      setIsAsking(false);
+    }
+  }
 
   function composeSpeechText(base: string, transcript: string): string {
     if (!transcript.trim()) {
@@ -717,6 +786,33 @@ export default function Home() {
           </p>
         </header>
 
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => setActiveTab("entries")}
+            className={`rounded-full px-4 py-2 text-sm font-medium transition ${
+              activeTab === "entries"
+                ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+                : "border border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
+            }`}
+          >
+            Entries
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("ask")}
+            className={`rounded-full px-4 py-2 text-sm font-medium transition ${
+              activeTab === "ask"
+                ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+                : "border border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
+            }`}
+          >
+            Ask
+          </button>
+        </div>
+
+        {activeTab === "entries" ? (
+          <>
         <form
           onSubmit={handleSave}
           className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
@@ -1064,6 +1160,83 @@ export default function Home() {
             </>
           )}
         </section>
+          </>
+        ) : (
+          <section className="flex min-h-[min(70vh,560px)] flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+            {!isLoading && entries.length === 0 ? (
+              <p className="border-b border-zinc-200 px-4 py-3 text-center text-sm text-zinc-600 dark:border-zinc-800 dark:text-zinc-400">
+                Add some entries first, then come back here.
+              </p>
+            ) : null}
+            <div
+              ref={chatScrollRef}
+              className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-3 py-4 sm:px-4"
+            >
+              {chatMessages.length === 0 && !isAsking ? (
+                <p className="py-8 text-center text-sm text-zinc-500 dark:text-zinc-400">
+                  Ask Remembrain about your life
+                </p>
+              ) : null}
+              {chatMessages.map((message, index) => (
+                <div
+                  key={`${message.role}-${index}`}
+                  className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
+                >
+                  <div
+                    className={`max-w-[min(100%,24rem)] whitespace-pre-wrap rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
+                      message.role === "user"
+                        ? "bg-blue-600 text-white dark:bg-blue-500"
+                        : "bg-zinc-200 text-zinc-900 dark:bg-zinc-700 dark:text-zinc-100"
+                    }`}
+                  >
+                    {message.content}
+                  </div>
+                </div>
+              ))}
+              {isAsking ? (
+                <div className="flex justify-start">
+                  <div className="rounded-2xl bg-zinc-200 px-4 py-2.5 text-sm italic text-zinc-600 dark:bg-zinc-700 dark:text-zinc-300">
+                    thinking...
+                  </div>
+                </div>
+              ) : null}
+            </div>
+            <form
+              onSubmit={(event) => void handleAskSubmit(event)}
+              className="flex shrink-0 flex-col gap-2 border-t border-zinc-200 p-3 dark:border-zinc-800 sm:flex-row sm:items-end"
+            >
+              <textarea
+                ref={askTextareaRef}
+                rows={1}
+                value={askInput}
+                onChange={(event) => {
+                  setAskInput(event.target.value);
+                  requestAnimationFrame(adjustAskTextareaHeight);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !event.shiftKey) {
+                    event.preventDefault();
+                    void handleAskSubmit();
+                  }
+                }}
+                placeholder={
+                  !isLoading && entries.length === 0
+                    ? "Add entries on the Entries tab first…"
+                    : "Ask a question…"
+                }
+                disabled={isAsking || isLoading || entries.length === 0}
+                className="max-h-40 min-h-11 w-full resize-none rounded-xl border border-zinc-300 bg-zinc-50 px-3 py-2.5 text-base outline-none transition focus:border-zinc-400 focus:ring-2 focus:ring-zinc-300 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-950 dark:focus:border-zinc-500 dark:focus:ring-zinc-700"
+              />
+              <button
+                type="submit"
+                disabled={isAsking || !askInput.trim() || isLoading || entries.length === 0}
+                className="shrink-0 rounded-xl bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300 sm:w-auto sm:self-stretch sm:px-6"
+              >
+                Send
+              </button>
+            </form>
+          </section>
+        )}
       </main>
       {isExportModalOpen ? (
         <div
