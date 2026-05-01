@@ -38,6 +38,31 @@ function fallbackEntries(originalText: string): { entries: ProcessedEntry[] } {
   };
 }
 
+/** Strip markdown fences and parse Claude's entries JSON; returns null on failure. */
+function parseEntriesFromModelText(modelText: string): {
+  entries?: Array<{ text?: string; category?: string }>;
+} | null {
+  let trimmed = modelText.trim();
+  const fenceMatch = trimmed.match(/^```(?:json)?\s*([\s\S]*?)```\s*$/m);
+  if (fenceMatch) {
+    trimmed = fenceMatch[1].trim();
+  }
+
+  try {
+    return JSON.parse(trimmed) as {
+      entries?: Array<{ text?: string; category?: string }>;
+    };
+  } catch (error) {
+    console.error(
+      "[process] malformed JSON from Claude:",
+      error instanceof Error ? error.message : error,
+      "snippet:",
+      trimmed.slice(0, 800),
+    );
+    return null;
+  }
+}
+
 export async function POST(request: Request) {
   let originalText = "";
 
@@ -72,55 +97,41 @@ export async function POST(request: Request) {
         model: "claude-sonnet-4-5-20250929",
         max_tokens: 1200,
         temperature: 0,
-        system: `You are processing a journal entry from a personal memory app. Follow these rules in order:
+        system: `You are processing journal entries for a personal memory app. Process the input through three steps:
 
 STEP 1 - Clean the text:
-- Fix obvious typos and spelling errors
-- Remove duplicate words and stuttered phrases (e.g., 'he is he is' becomes 'he is')
-- Fix clearly broken grammar
-- Preserve the user's voice, word choice, and meaning
-- Do NOT paraphrase, summarize, or shorten substantively
-- Do NOT change the user's vocabulary or style
+- Fix typos and spelling errors
+- Remove duplicated/stuttered phrases (e.g., 'he is he is' becomes 'he is')
+- Fix broken grammar
+- Preserve the user's voice and meaning - do not paraphrase or shorten
 
-STEP 2 - Detect multi-topic entries:
-- A multi-topic entry contains TWO OR MORE distinct, unrelated subjects
-- Examples that SHOULD split:
-  * 'started lamictal 200mg today, also fought with mom' → 2 entries (health, relationships)
-  * 'my brother is bipolar and lives in Australia' → 2 entries: 'my brother is bipolar' (relationships - it's about a family member's health, but the entry is about the brother), 'my brother lives in Australia' (logistics)
-  * Actually wait - 'my brother is bipolar' is health context about a relationship. Categorize as 'relationships' since the subject is the brother.
-- Examples that should NOT split (single topic):
-  * 'started Abilify 2mg, sleeping better, slight irritation' (all about same med transition)
-  * 'had a great talk with Dan Bi about NYU' (one conversation)
+STEP 2 - Split if multi-topic:
+A multi-topic entry contains two or more distinct subjects that would belong in different categories.
 
-STEP 3 - Categorize each entry:
-Allowed categories (use exactly these lowercase names): health, relationships, career, logistics, emotional, finance, ideas, learning, reflection, other.
+EXAMPLES of entries that MUST split:
+- 'started lamictal 200mg today, also fought with mom' → split into health entry + relationships entry
+- 'My brother is bipolar and he is 35 years old and lives in Australia' → split into 'My brother is bipolar' (relationships) + 'My brother is 35 years old and lives in Australia' (logistics) - because brother's mental health and brother's location are different facts deserving different categorization
+- 'feeling anxious about NYU and I should email mom back' → emotional + relationships
+- 'spent $200 at the dermatologist today, my skin is healing' → finance + health
 
-Categories and when to use them:
-- health: medications, symptoms, doctor visits, body, sleep, diet, exercise, mental health, physical wellbeing
-- relationships: family, friends, romantic partner, social interactions, conflicts, conversations with people, anything about specific people in user's life
-- career: work, jobs, applications, professional development, business operations, school, professional networking
-- logistics: scheduling, travel, addresses, dates, locations, plans, biographical facts (age, birthdays, place of residence), administrative tasks (visas, documentation)
-- emotional: feelings, mood, internal experiences, anxiety, joy, anger, processing emotions in the moment
-- finance: money, spending, investments, bills, taxes, accounts, financial decisions, costs of things
-- ideas: product ideas, business ideas, creative thoughts, things to build, hypotheticals, brainstorms
-- learning: things read, watched, learned, want to learn, books, courses, articles, skills being developed (different from career - acquisition of knowledge/skills, not work)
-- reflection: pattern-noticing about oneself, self-observations, insights about behavior, meta-cognition, looking back on past experiences with new understanding
-- other: ONLY when truly nothing else fits
+EXAMPLES that should NOT split (single topic):
+- 'started Abilify 2mg, sleeping better, slight irritation' (all about same med transition - one entry, health)
+- 'Dan Bi and I had dinner at the new ramen place tonight' (one event - relationships)
 
-The difference between emotional and reflection: emotional is feeling in the moment ("I'm angry today"). Reflection is observing patterns ("I notice I get angry on Sundays").
+STEP 3 - Categorize each entry. Use these 10 categories:
+- health: medications, symptoms, body, sleep, exercise, mental health
+- relationships: family, friends, partner, social interactions, conversations with people, facts ABOUT specific people in user's life
+- career: work, jobs, applications, school, business operations
+- logistics: scheduling, travel, dates, locations, biographical facts (birthday, age, address)
+- emotional: in-the-moment feelings, mood
+- finance: money, spending, costs, bills, investments
+- ideas: product/business ideas, creative thoughts, things to build
+- learning: things read/watched/learned, skills being acquired
+- reflection: pattern-noticing about oneself, self-observations, meta-cognitive insights
+- other: ONLY when truly nothing fits
 
-The difference between career and learning: career is doing the work; learning is acquiring knowledge.
-
-Be aggressive about choosing specific categories. 'I am 32 years old' is logistics (biographical fact). 'My birthday is May 19' is logistics. Don't reach for 'other' just because something is brief.
-
-Return ONLY valid JSON:
-{
-  "entries": [
-    { "text": "cleaned text", "category": "category_name" }
-  ]
-}
-
-No markdown, no commentary, just the JSON object.`,
+Return ONLY valid JSON, no markdown:
+{"entries": [{"text": "cleaned text", "category": "category"}]}`,
         messages: [
           {
             role: "user",
@@ -135,17 +146,29 @@ No markdown, no commentary, just the JSON object.`,
     }
 
     const rawResponseText = await anthropicResponse.text();
-    const parsedApiResponse = JSON.parse(rawResponseText) as {
-      content?: Array<{ type?: string; text?: string }>;
-    };
+    let parsedApiResponse: { content?: Array<{ type?: string; text?: string }> };
+    try {
+      parsedApiResponse = JSON.parse(rawResponseText) as {
+        content?: Array<{ type?: string; text?: string }>;
+      };
+    } catch (error) {
+      console.error(
+        "[process] Anthropic response body is not valid JSON:",
+        error instanceof Error ? error.message : error,
+        "snippet:",
+        rawResponseText.slice(0, 500),
+      );
+      return NextResponse.json(fallbackEntries(originalText));
+    }
+
     const modelText =
       parsedApiResponse.content?.find((block) => block.type === "text")?.text ?? "";
 
-    const parsedModelJson = JSON.parse(modelText) as {
-      entries?: Array<{ text?: string; category?: string }>;
-    };
-
-    if (!parsedModelJson.entries || !Array.isArray(parsedModelJson.entries)) {
+    const parsedModelJson = parseEntriesFromModelText(modelText);
+    if (
+      !parsedModelJson?.entries ||
+      !Array.isArray(parsedModelJson.entries)
+    ) {
       return NextResponse.json(fallbackEntries(originalText));
     }
 
@@ -161,7 +184,8 @@ No markdown, no commentary, just the JSON object.`,
     }
 
     return NextResponse.json({ entries: cleanedEntries });
-  } catch {
+  } catch (error) {
+    console.error("[process] unexpected error:", error);
     return NextResponse.json(fallbackEntries(originalText));
   }
 }
