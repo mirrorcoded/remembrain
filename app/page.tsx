@@ -105,6 +105,27 @@ const CATEGORY_BADGE_STYLES: Record<Category, string> = {
   other: "bg-zinc-200 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200",
 };
 
+/** Solid fills for stats bars (same hues as category badges). */
+const CATEGORY_BAR_FILL_CLASSES: Record<Category, string> = {
+  health: "bg-emerald-500 dark:bg-emerald-400",
+  relationships: "bg-pink-500 dark:bg-pink-400",
+  career: "bg-blue-500 dark:bg-blue-400",
+  logistics: "bg-zinc-500 dark:bg-zinc-400",
+  emotional: "bg-violet-500 dark:bg-violet-400",
+  finance: "bg-amber-500 dark:bg-amber-400",
+  ideas: "bg-orange-500 dark:bg-orange-400",
+  learning: "bg-teal-500 dark:bg-teal-400",
+  reflection: "bg-indigo-500 dark:bg-indigo-400",
+  other: "bg-zinc-400 dark:bg-zinc-500",
+};
+
+function formatLocalYmd(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 const CATEGORY_ORDER: Category[] = [
   "health",
   "relationships",
@@ -177,6 +198,7 @@ export default function Home() {
   );
   const [copyFeedback, setCopyFeedback] = useState("");
   const [saveNoticeMessage, setSaveNoticeMessage] = useState("");
+  const [statsExpanded, setStatsExpanded] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -187,6 +209,73 @@ export default function Home() {
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const speechBaseTextRef = useRef("");
   const finalTranscriptRef = useRef("");
+
+  const statsCategoryRows = useMemo(() => {
+    const counts: Record<Category, number> = {
+      health: 0,
+      relationships: 0,
+      career: 0,
+      logistics: 0,
+      emotional: 0,
+      finance: 0,
+      ideas: 0,
+      learning: 0,
+      reflection: 0,
+      other: 0,
+    };
+    for (const entry of entries) {
+      counts[entry.category] += 1;
+    }
+    return ALL_CATEGORIES.map((category) => ({
+      category,
+      count: counts[category],
+    })).sort((a, b) => {
+      if (b.count !== a.count) {
+        return b.count - a.count;
+      }
+      return a.category.localeCompare(b.category);
+    });
+  }, [entries]);
+
+  const statsLast30Days = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const windowStart = new Date(today);
+    windowStart.setDate(windowStart.getDate() - 29);
+
+    const countsByDay = new Map<string, number>();
+    for (const entry of entries) {
+      const d = new Date(entry.created_at);
+      d.setHours(0, 0, 0, 0);
+      if (d >= windowStart && d <= today) {
+        const key = formatLocalYmd(d);
+        countsByDay.set(key, (countsByDay.get(key) ?? 0) + 1);
+      }
+    }
+
+    const rows: { dayLabel: string; count: number; ymd: string }[] = [];
+    for (let i = 0; i < 30; i += 1) {
+      const d = new Date(windowStart);
+      d.setDate(windowStart.getDate() + i);
+      const key = formatLocalYmd(d);
+      rows.push({
+        dayLabel: String(d.getDate()),
+        count: countsByDay.get(key) ?? 0,
+        ymd: key,
+      });
+    }
+    return rows;
+  }, [entries]);
+
+  const statsDailyMax = useMemo(
+    () => statsLast30Days.reduce((max, row) => Math.max(max, row.count), 0),
+    [statsLast30Days],
+  );
+
+  const statsCategoryMax = useMemo(
+    () => statsCategoryRows.reduce((max, row) => Math.max(max, row.count), 0),
+    [statsCategoryRows],
+  );
 
   const filteredEntries = useMemo(() => {
     const normalizedSearch = searchQuery.trim().toLowerCase();
@@ -703,6 +792,105 @@ export default function Home() {
               : "Save"}
           </button>
         </form>
+
+        <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-lg font-medium">Stats</h2>
+            <button
+              type="button"
+              onClick={() => setStatsExpanded((open) => !open)}
+              className="rounded-lg border border-zinc-300 bg-zinc-50 px-3 py-1.5 text-xs font-medium transition hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-950 dark:hover:bg-zinc-900"
+            >
+              {statsExpanded ? "Hide stats" : "Show stats"}
+            </button>
+          </div>
+          {statsExpanded ? (
+            <div className="mt-4 space-y-8">
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+                  Total entries
+                </p>
+                <p className="mt-1 text-4xl font-semibold tabular-nums tracking-tight">
+                  {entries.length}
+                </p>
+              </div>
+
+              <div>
+                <p className="mb-3 text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+                  By category
+                </p>
+                <div className="space-y-2">
+                  {statsCategoryRows.map(({ category, count }) => (
+                    <div key={category} className="flex items-center gap-2 text-xs">
+                      <span className="w-[7.5rem] shrink-0 truncate text-zinc-600 dark:text-zinc-400">
+                        {CATEGORY_LABELS[category]}
+                      </span>
+                      <div className="flex min-w-0 flex-1 items-center gap-2">
+                        <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-700">
+                          <div
+                            className={`h-full rounded-full ${CATEGORY_BAR_FILL_CLASSES[category]}`}
+                            style={{
+                              width:
+                                statsCategoryMax > 0
+                                  ? `${(count / statsCategoryMax) * 100}%`
+                                  : "0%",
+                            }}
+                          />
+                        </div>
+                        <span className="w-7 shrink-0 text-right tabular-nums text-zinc-600 dark:text-zinc-300">
+                          {count}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <p className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+                  Last 30 days
+                </p>
+                <div className="flex gap-3">
+                  <div className="flex shrink-0 flex-col justify-between pb-5 pt-1 text-right text-[10px] tabular-nums text-zinc-500 dark:text-zinc-400">
+                    <span>{statsDailyMax}</span>
+                    <span>0</span>
+                  </div>
+                  <div className="min-w-0 flex-1 overflow-x-auto">
+                    <div className="flex min-h-[112px] flex-row items-end gap-px pb-1">
+                      {statsLast30Days.map((day) => (
+                        <div
+                          key={day.ymd}
+                          className="flex min-w-[8px] flex-1 flex-col justify-end"
+                          title={`${day.ymd}: ${day.count}`}
+                        >
+                          <div className="relative flex h-24 w-full flex-col justify-end">
+                            <div
+                              className={`w-full rounded-t ${day.count > 0 ? "bg-zinc-800 dark:bg-zinc-200" : "bg-transparent"}`}
+                              style={{
+                                height:
+                                  statsDailyMax > 0
+                                    ? `${(day.count / statsDailyMax) * 100}%`
+                                    : "0%",
+                                minHeight: day.count > 0 ? 2 : 0,
+                              }}
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="flex flex-row gap-px pt-1 text-[10px] leading-none text-zinc-500 dark:text-zinc-400">
+                      {statsLast30Days.map((day) => (
+                        <span key={`${day.ymd}-label`} className="min-w-[8px] flex-1 text-center">
+                          {day.dayLabel}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </section>
 
         <section className="space-y-3">
           <h2 className="text-lg font-medium">Saved Entries</h2>
