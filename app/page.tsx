@@ -47,6 +47,7 @@ type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
 type ExportFormat = "markdown" | "text" | "json";
 type ExportScope = "all" | "filtered" | "date-range";
 type NewEntryCategorySelection = "auto" | Category;
+type ProcessApiEntry = { text?: string; category?: string };
 
 function formatTimestamp(timestamp: string): string {
   const datePart = new Intl.DateTimeFormat("en-US", {
@@ -158,6 +159,7 @@ export default function Home() {
     ALL_CATEGORIES,
   );
   const [copyFeedback, setCopyFeedback] = useState("");
+  const [saveNoticeMessage, setSaveNoticeMessage] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -333,41 +335,62 @@ export default function Home() {
 
     setIsSaving(true);
     setErrorMessage(null);
+    setSaveNoticeMessage("");
 
-    let category: Category = "other";
-    if (newEntryCategorySelection === "auto") {
-      try {
-        const categorizeResponse = await fetch("/api/categorize", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ text: trimmedText }),
-        });
+    let processedEntries: Array<{ text: string; category: Category }> = [
+      { text: trimmedText, category: "other" },
+    ];
 
-        if (categorizeResponse.ok) {
-          const result = (await categorizeResponse.json()) as { category?: string };
-          category = sanitizeCategory(result.category ?? "other");
+    try {
+      const processResponse = await fetch("/api/process", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          text: trimmedText,
+          manualCategory: newEntryCategorySelection,
+        }),
+      });
+
+      if (processResponse.ok) {
+        const result = (await processResponse.json()) as { entries?: ProcessApiEntry[] };
+        const mappedEntries =
+          result.entries
+            ?.map((entry) => ({
+              text: entry.text?.trim() ?? "",
+              category: sanitizeCategory(entry.category ?? "other"),
+            }))
+            .filter((entry) => entry.text.length > 0) ?? [];
+
+        if (mappedEntries.length > 0) {
+          processedEntries = mappedEntries;
         }
-      } catch {
-        category = "other";
       }
-    } else {
-      category = newEntryCategorySelection;
+    } catch {
+      if (newEntryCategorySelection !== "auto") {
+        processedEntries = [{ text: trimmedText, category: newEntryCategorySelection }];
+      }
     }
 
-    const { error } = await supabase
-      .from("entries")
-      .insert({ text: trimmedText, category });
+    for (const entry of processedEntries) {
+      const { error } = await supabase
+        .from("entries")
+        .insert({ text: entry.text, category: entry.category });
 
-    if (error) {
-      setErrorMessage("Could not save entry. Please try again.");
-      setIsSaving(false);
-      return;
+      if (error) {
+        setErrorMessage("Could not save entry. Please try again.");
+        setIsSaving(false);
+        return;
+      }
     }
 
     setText("");
     setNewEntryCategorySelection("auto");
+    if (processedEntries.length > 1) {
+      setSaveNoticeMessage(`Entry split into ${processedEntries.length} parts`);
+      setTimeout(() => setSaveNoticeMessage(""), 2500);
+    }
     await loadEntries();
     setIsSaving(false);
   }
@@ -666,7 +689,7 @@ export default function Home() {
           >
             {isSaving
               ? newEntryCategorySelection === "auto"
-                ? "Categorizing..."
+                ? "Processing..."
                 : "Saving..."
               : "Save"}
           </button>
@@ -674,6 +697,11 @@ export default function Home() {
 
         <section className="space-y-3">
           <h2 className="text-lg font-medium">Saved Entries</h2>
+          {saveNoticeMessage ? (
+            <p className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700 dark:border-emerald-900/70 dark:bg-emerald-950/30 dark:text-emerald-200">
+              {saveNoticeMessage}
+            </p>
+          ) : null}
           {errorMessage ? (
             <p className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900/70 dark:bg-red-950/30 dark:text-red-200">
               {errorMessage}
