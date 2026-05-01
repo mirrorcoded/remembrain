@@ -1,64 +1,130 @@
-import Image from "next/image";
+"use client";
+
+import { FormEvent, useEffect, useState } from "react";
+
+type Entry = {
+  id: string;
+  text: string;
+  timestamp: string;
+};
+
+const STORAGE_KEY = "remembrain.entries";
+
+function formatTimestamp(timestamp: string): string {
+  const datePart = new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(new Date(timestamp));
+
+  const timePart = new Intl.DateTimeFormat("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(timestamp));
+
+  return `${datePart} at ${timePart}`;
+}
 
 export default function Home() {
+  const [text, setText] = useState("");
+  const [entries, setEntries] = useState<Entry[]>([]);
+
+  useEffect(() => {
+    const savedEntries = localStorage.getItem(STORAGE_KEY);
+
+    if (!savedEntries) {
+      return;
+    }
+
+    try {
+      const parsedEntries = JSON.parse(savedEntries) as Entry[];
+      if (Array.isArray(parsedEntries)) {
+        setEntries(parsedEntries);
+      }
+    } catch {
+      localStorage.removeItem(STORAGE_KEY);
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
+  }, [entries]);
+
+  function handleSave(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    const trimmedText = text.trim();
+    if (!trimmedText) {
+      return;
+    }
+
+    const newEntry: Entry = {
+      id: crypto.randomUUID(),
+      text: trimmedText,
+      timestamp: new Date().toISOString(),
+    };
+
+    setEntries((prevEntries) => [newEntry, ...prevEntries]);
+    setText("");
+  }
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+    <div className="min-h-screen bg-zinc-100 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
+      <main className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-8 sm:px-6">
+        <header className="space-y-1">
+          <h1 className="text-2xl font-semibold tracking-tight">Remembrain</h1>
+          <p className="text-sm text-zinc-600 dark:text-zinc-400">
+            Capture your thoughts and keep your memories close.
           </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+        </header>
+
+        <form
+          onSubmit={handleSave}
+          className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
+        >
+          <label htmlFor="entry" className="mb-2 block text-sm font-medium">
+            New Journal Entry
+          </label>
+          <textarea
+            id="entry"
+            value={text}
+            onChange={(event) => setText(event.target.value)}
+            placeholder="What are you thinking about?"
+            className="min-h-32 w-full resize-y rounded-xl border border-zinc-300 bg-zinc-50 px-3 py-2 text-base outline-none transition focus:border-zinc-400 focus:ring-2 focus:ring-zinc-300 dark:border-zinc-700 dark:bg-zinc-950 dark:focus:border-zinc-500 dark:focus:ring-zinc-700"
+          />
+          <button
+            type="submit"
+            className="mt-3 w-full rounded-xl bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-zinc-700 active:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+            disabled={!text.trim()}
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
+            Save
+          </button>
+        </form>
+
+        <section className="space-y-3">
+          <h2 className="text-lg font-medium">Saved Entries</h2>
+          {entries.length === 0 ? (
+            <p className="rounded-2xl border border-dashed border-zinc-300 bg-white p-4 text-sm text-zinc-600 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400">
+              No entries yet. Start with your first memory.
+            </p>
+          ) : (
+            <ul className="space-y-3">
+              {entries.map((entry) => (
+                <li
+                  key={entry.id}
+                  className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
+                >
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                    {formatTimestamp(entry.timestamp)}
+                  </p>
+                  <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed">
+                    {entry.text}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
       </main>
     </div>
   );
