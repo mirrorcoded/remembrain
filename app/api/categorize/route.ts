@@ -9,7 +9,11 @@ const CATEGORIES = new Set([
   "other",
 ]);
 
-function sanitizeCategory(value: string): string {
+function sanitizeCategory(value: string | undefined): string {
+  if (!value) {
+    return "other";
+  }
+
   const normalizedValue = value.trim().toLowerCase();
   return CATEGORIES.has(normalizedValue) ? normalizedValue : "other";
 }
