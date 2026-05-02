@@ -155,3 +155,20 @@ export function normalizeTagList(raw: unknown, maxTags = 5): string[] {
   }
   return out;
 }
+
+/** PostgREST / Postgres when `tags` column was never added — retry inserts/updates without `tags`. */
+export function isMissingTagsColumnError(error: {
+  message?: string;
+  code?: string;
+} | null): boolean {
+  if (!error) {
+    return false;
+  }
+  const m = String(error.message ?? "").toLowerCase();
+  return (
+    m.includes("tags") ||
+    m.includes("schema cache") ||
+    m.includes("does not exist") ||
+    error.code === "42703"
+  );
+}

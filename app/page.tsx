@@ -20,6 +20,7 @@ import {
   categoryDisplayLabel,
   entryMatchesKnownCategoryFilter,
   isKnownCategory,
+  isMissingTagsColumnError,
   normalizeTagList,
   persistEntryCategory,
   sanitizeCategoryForStorage,
@@ -498,10 +499,11 @@ export default function Home() {
 
     const { data, error } = await supabase
       .from("entries")
-      .select("id, created_at, text, category, tags")
+      .select("*")
       .order("created_at", { ascending: false });
 
     if (error) {
+      console.error("[entries] load failed:", error.message, error);
       setErrorMessage("Could not load entries. Please try again.");
       if (silent) {
         setEntriesRefreshing(false);
@@ -511,11 +513,16 @@ export default function Home() {
       return;
     }
 
-    const normalizedEntries: Entry[] = (data ?? []).map((entry) => ({
-      ...entry,
-      category: (entry.category ?? "other").trim().toLowerCase(),
-      tags: normalizeTagList(entry.tags),
-    }));
+    const normalizedEntries: Entry[] = (data ?? []).map((row) => {
+      const entry = row as Record<string, unknown>;
+      return {
+        id: Number(entry.id),
+        text: String(entry.text ?? ""),
+        created_at: String(entry.created_at ?? ""),
+        category: String(entry.category ?? "other").trim().toLowerCase(),
+        tags: normalizeTagList(entry.tags),
+      };
+    });
 
     setEntries(normalizedEntries);
     if (silent) {
@@ -1797,11 +1804,20 @@ export default function Home() {
     }
 
     for (const entry of processedEntries) {
-      const { error } = await supabase.from("entries").insert({
-        text: entry.text,
-        category: entry.category,
-        tags: entry.tags,
-      });
+      let error =
+        (
+          await supabase.from("entries").insert({
+            text: entry.text,
+            category: entry.category,
+            tags: entry.tags,
+          })
+        ).error;
+      if (error && isMissingTagsColumnError(error)) {
+        ({ error } = await supabase.from("entries").insert({
+          text: entry.text,
+          category: entry.category,
+        }));
+      }
 
       if (error) {
         setErrorMessage("Could not save entry. Please try again.");
@@ -1862,10 +1878,18 @@ export default function Home() {
     const categoryToSave = persistEntryCategory(editingCategory);
     const tagsToSave = normalizeTagList(editingTags);
 
-    const { error } = await supabase
-      .from("entries")
-      .update({ text: trimmedText, category: categoryToSave, tags: tagsToSave })
-      .eq("id", entryId);
+    let error = (
+      await supabase
+        .from("entries")
+        .update({ text: trimmedText, category: categoryToSave, tags: tagsToSave })
+        .eq("id", entryId)
+    ).error;
+    if (error && isMissingTagsColumnError(error)) {
+      ({ error } = await supabase
+        .from("entries")
+        .update({ text: trimmedText, category: categoryToSave })
+        .eq("id", entryId));
+    }
 
     if (error) {
       setErrorMessage("Could not update entry. Please try again.");

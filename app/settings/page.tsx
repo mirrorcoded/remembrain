@@ -1,7 +1,7 @@
 "use client";
 
 import { supabase } from "@/lib/supabase";
-import { normalizeTagList } from "@/lib/categories";
+import { isMissingTagsColumnError, normalizeTagList } from "@/lib/categories";
 import {
   formatBackupCalendarLabel,
   LAST_BACKUP_STORAGE_KEY,
@@ -93,7 +93,7 @@ export default function SettingsPage() {
     setTagsCatalogBusy(true);
     setTagsCatalogError(null);
     try {
-      const { data, error } = await supabase.from("entries").select("tags");
+      const { data, error } = await supabase.from("entries").select("*");
       if (error) {
         setTagsCatalogError("Could not load tags.");
         setTagsCatalog([]);
@@ -252,7 +252,7 @@ export default function SettingsPage() {
     try {
       const { data, error } = await supabase
         .from("entries")
-        .select("id, created_at, text, category, tags, user_id")
+        .select("*")
         .order("created_at", { ascending: true });
 
       if (error) {
@@ -366,23 +366,33 @@ export default function SettingsPage() {
     setTagRenameBusy(fromTag);
     setTagsCatalogError(null);
     try {
-      const { data: rows, error } = await supabase.from("entries").select("id, tags");
+      const { data: rows, error } = await supabase.from("entries").select("*");
       if (error || !rows) {
         setTagsCatalogError("Could not update entries.");
         return;
       }
       for (const row of rows) {
-        const tags = Array.isArray(row.tags)
-          ? row.tags.filter((t): t is string => typeof t === "string")
+        const rawTags = (row as { id: number; tags?: unknown }).tags;
+        const tags = Array.isArray(rawTags)
+          ? rawTags.filter((t: unknown): t is string => typeof t === "string")
           : [];
         if (!tags.some((t) => t === fromTag)) {
           continue;
         }
         const next = normalizeTagList(tags.map((t) => (t === fromTag ? toTag : t)));
-        const { error: upErr } = await supabase
-          .from("entries")
-          .update({ tags: next })
-          .eq("id", row.id as number);
+        const id = (row as { id: number }).id;
+        let upErr = (
+          await supabase
+            .from("entries")
+            .update({ tags: next })
+            .eq("id", id)
+        ).error;
+        if (upErr && isMissingTagsColumnError(upErr)) {
+          setTagsCatalogError(
+            "Tags column is not available on the server. Add the tags column in Supabase to rename tags.",
+          );
+          return;
+        }
         if (upErr) {
           setTagsCatalogError("Could not rename tag.");
           return;
@@ -402,23 +412,33 @@ export default function SettingsPage() {
     setTagRenameBusy(tag);
     setTagsCatalogError(null);
     try {
-      const { data: rows, error } = await supabase.from("entries").select("id, tags");
+      const { data: rows, error } = await supabase.from("entries").select("*");
       if (error || !rows) {
         setTagsCatalogError("Could not update entries.");
         return;
       }
       for (const row of rows) {
-        const tags = Array.isArray(row.tags)
-          ? row.tags.filter((t): t is string => typeof t === "string")
+        const rawTags = (row as { id: number; tags?: unknown }).tags;
+        const tags = Array.isArray(rawTags)
+          ? rawTags.filter((t: unknown): t is string => typeof t === "string")
           : [];
         if (!tags.includes(tag)) {
           continue;
         }
         const next = normalizeTagList(tags.filter((t) => t !== tag));
-        const { error: upErr } = await supabase
-          .from("entries")
-          .update({ tags: next })
-          .eq("id", row.id as number);
+        const id = (row as { id: number }).id;
+        let upErr = (
+          await supabase
+            .from("entries")
+            .update({ tags: next })
+            .eq("id", id)
+        ).error;
+        if (upErr && isMissingTagsColumnError(upErr)) {
+          setTagsCatalogError(
+            "Tags column is not available on the server. Add the tags column in Supabase to remove tags.",
+          );
+          return;
+        }
         if (upErr) {
           setTagsCatalogError("Could not remove tag.");
           return;
