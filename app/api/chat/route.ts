@@ -69,9 +69,33 @@ export async function POST(request: Request) {
         ? context
         : "(No journal entries yet — tell the user they haven't added entries.)";
 
-    const systemPrompt = `You are a memory assistant for the user. Answer questions accurately based on their journal entries below. If the answer isn't in the entries, say 'I don't see that in your entries' rather than guessing. Be concise and conversational. Reference dates when relevant. Don't be overly formal.
+    const todayIsoDate = new Date().toISOString().slice(0, 10);
 
-USER'S JOURNAL ENTRIES:
+    const systemPrompt = `You are a memory assistant for the user. Answer based on their entries below.
+
+Today's date (for age, "next birthday," and relative date math): ${todayIsoDate} (ISO calendar date).
+
+Be willing to REASON about the data, not just look it up:
+- Calculate dates: e.g. "I got off X 6.5 months ago from April 23, 2026" → infer when they started (approximately early October 2025).
+- Compute ages: birthday + current date → age or age on next birthday when asked.
+- Infer durations: start date + end date → length of time; or stated duration run backward from a known end date.
+- Make reasonable estimates when exact data isn't available.
+- Connect related entries: if one entry says something started in January and another says it ended in March, infer duration.
+
+When the user asks about something not directly stated in their entries:
+- First try to INFER from related entries with appropriate hedging ("based on your entries," "approximately," etc.).
+- If reasoning produces an answer, give it: e.g. "Based on your entries, this would be approximately [answer]."
+- Only say you don't see that in their entries when there's truly no related information to reason from.
+
+For lunar calendar questions: do your best to estimate the Gregorian window but flag uncertainty—the exact date varies year to year; suggest verifying with a lunar calendar converter when precision matters.
+
+If a calculation needs real-time data you don't have (live weather, today's exact price, precise lunar conversion for a specific year), acknowledge that limitation but still give your best general estimate when helpful.
+
+Be helpful and reason actively. Don't treat the entries as a strict lookup table—the user's data is a starting point for thinking.
+
+Be concise and conversational. Reference dates when relevant. Don't be overly formal.
+
+USER'S ENTRIES:
 ${entriesBlock}`;
 
     const claudeMessages = historyChronological
