@@ -260,6 +260,8 @@ export default function Home() {
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const speechBaseTextRef = useRef("");
   const finalTranscriptRef = useRef("");
+  /** When true, recognition `onend` skips committing transcript (e.g. save stopped the mic). */
+  const speechDiscardCommitRef = useRef(false);
   const chatScrollRef = useRef<HTMLDivElement | null>(null);
   const askTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
@@ -720,7 +722,11 @@ export default function Home() {
     };
 
     recognition.onend = () => {
-      setText(composeSpeechText(speechBaseTextRef.current, finalTranscriptRef.current));
+      const discard = speechDiscardCommitRef.current;
+      speechDiscardCommitRef.current = false;
+      if (!discard) {
+        setText(composeSpeechText(speechBaseTextRef.current, finalTranscriptRef.current));
+      }
       recognitionRef.current = null;
       setIsListening(false);
     };
@@ -730,9 +736,13 @@ export default function Home() {
     setIsListening(true);
   }
 
-  function stopListening() {
+  function stopListening(options?: { discardPendingCommit?: boolean }) {
     if (!recognitionRef.current) {
       return;
+    }
+
+    if (options?.discardPendingCommit) {
+      speechDiscardCommitRef.current = true;
     }
 
     recognitionRef.current.stop();
@@ -753,7 +763,7 @@ export default function Home() {
     setErrorMessage(null);
     setSaveNoticeMessage("");
     setSaveInlineStatus(useAutoCategory ? "Got it..." : "Saving...");
-    setText("");
+    stopListening({ discardPendingCommit: true });
 
     let processedEntries: Array<{ text: string; category: Category }> = [
       { text: trimmedText, category: "other" },
@@ -829,8 +839,9 @@ export default function Home() {
       }
     }
 
-    setSaveInlineStatus("");
+    setText("");
     setNewEntryCategorySelection("auto");
+    setSaveInlineStatus("");
     await loadEntries();
     setIsSaving(false);
   }
@@ -1224,7 +1235,13 @@ export default function Home() {
             {isMounted && isSpeechSupported ? (
               <button
                 type="button"
-                onClick={isListening ? stopListening : startListening}
+                onClick={() => {
+                  if (isListening) {
+                    stopListening();
+                  } else {
+                    startListening();
+                  }
+                }}
                 disabled={isSaving}
                 aria-label={isListening ? "Stop voice input" : "Start voice input"}
                 className={`absolute bottom-3 right-3 inline-flex h-10 min-w-10 items-center justify-center rounded-full px-3 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${
