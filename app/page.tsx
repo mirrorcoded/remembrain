@@ -2873,25 +2873,26 @@ export default function Home() {
                                     )}
                                     {editingEntryId !== entry.id &&
                                     !entriesSelectMode &&
+                                    Array.isArray(entry.tags) &&
                                     entry.tags.length > 0
-                                      ? entry.tags.map((tag) => (
+                                      ? entry.tags.map((tag, tagIdx) => (
                                           <button
-                                            key={`${entry.id}-hdr-${tag}`}
+                                            key={`${entry.id}-tag-${tagIdx}-${tag.slice(0, 40)}`}
                                             type="button"
                                             data-entry-longpress-ignore
                                             onClick={(e) => {
                                               e.stopPropagation();
                                               toggleTagFilter(tag);
                                             }}
-                                            className={`rounded-full px-2 py-0.5 text-[10px] font-medium transition ${
+                                            className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium leading-tight transition ${
                                               activeTagFilters.some(
                                                 (s) => s.toLowerCase() === tag.toLowerCase(),
                                               )
                                                 ? "bg-zinc-700 text-white dark:bg-zinc-300 dark:text-zinc-900"
-                                                : "border border-zinc-200/90 bg-zinc-50 text-zinc-500 hover:bg-zinc-100 dark:border-zinc-600 dark:bg-zinc-800/90 dark:text-zinc-400 dark:hover:bg-zinc-700"
+                                                : "border border-zinc-200 bg-zinc-100 text-zinc-800 hover:bg-zinc-200 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
                                             }`}
                                           >
-                                            {tag}
+                                            {typeof tag === "string" ? tag : String(tag)}
                                           </button>
                                         ))
                                       : null}

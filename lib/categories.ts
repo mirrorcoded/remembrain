@@ -129,12 +129,50 @@ export function entryMatchesKnownCategoryFilter(
   return ec === filter;
 }
 
+/** If Postgres/Supabase stored or returned a serialized JSON array as text, split into real tags. */
+function expandSerializedJsonTagStrings(parts: string[]): string[] {
+  const out: string[] = [];
+  for (const part of parts) {
+    const t = part.trim();
+    if (!t) {
+      continue;
+    }
+    if (t.startsWith("[") && t.endsWith("]")) {
+      try {
+        const parsed = JSON.parse(t) as unknown;
+        if (Array.isArray(parsed)) {
+          for (const x of parsed) {
+            if (typeof x === "string" && x.trim()) {
+              out.push(x.trim());
+            }
+          }
+          continue;
+        }
+      } catch {
+        // treat as literal tag text
+      }
+    }
+    out.push(part);
+  }
+  return out;
+}
+
 export function normalizeTagList(raw: unknown, maxTags = 5): string[] {
-  /** Claude sometimes returns a single tag string instead of string[]. */
+  /** Whole column sometimes arrives as a single JSON-array string, e.g. '["Dan Bi"]'. */
   if (typeof raw === "string") {
     const t = raw.trim();
     if (!t) {
       return [];
+    }
+    if (t.startsWith("[") && t.endsWith("]")) {
+      try {
+        const parsed = JSON.parse(t) as unknown;
+        if (Array.isArray(parsed)) {
+          return normalizeTagList(parsed, maxTags);
+        }
+      } catch {
+        // fall through to comma / single-tag handling
+      }
     }
     const parts = t.includes(",")
       ? t.split(",").map((s) => s.trim()).filter(Boolean)
@@ -145,9 +183,10 @@ export function normalizeTagList(raw: unknown, maxTags = 5): string[] {
     return [];
   }
   /** Flatten accidental [["a","b"]] from JSON shape mismatches. */
-  const flattened = raw
+  let flattened = raw
     .flat(Infinity)
     .filter((item): item is string => typeof item === "string");
+  flattened = expandSerializedJsonTagStrings(flattened);
   const out: string[] = [];
   const seenLower = new Set<string>();
   for (const item of flattened) {
