@@ -20,7 +20,7 @@ function parseQuestionsFromModelText(modelText: string): string[] | null {
       .filter((item): item is string => typeof item === "string")
       .map((s) => s.trim())
       .filter((s) => s.length > 0)
-      .slice(0, 3);
+      .slice(0, 6);
     return strings.length > 0 ? strings : null;
   } catch {
     return null;
@@ -68,16 +68,26 @@ export async function POST() {
     })
     .join("\n\n");
 
-  const userPrompt = `Based on these journal entries, suggest 3 short, useful questions the user might want to ask their personal memory app. Questions should be:
-- Specific to topics actually present in their entries
-- Useful for retrieval (asking about facts, dates, patterns)
-- Brief (under 10 words each)
-- Varied (don't ask 3 questions about the same topic)
+  const todayIso = new Date().toISOString().slice(0, 10);
 
-Return ONLY a JSON array of 3 strings, no other text:
-["question 1", "question 2", "question 3"]
+  const userPrompt = `Based on these journal entries, suggest 6 different short, useful questions the user might want to ask their personal memory app. 
 
-ENTRIES:
+Requirements:
+- Questions must be specific to topics actually present in their entries
+- Useful for retrieval (asking about facts, dates, patterns, advice based on context)
+- Brief (under 12 words each)
+- VARIED - cover different topics, different question types
+- Mix of:
+  * 2 questions about specific facts (dates, ages, names)
+  * 2 questions about patterns or summaries (themes, trends)
+  * 2 questions seeking advice or reflection (using their data as context)
+
+Return ONLY a JSON array of 6 strings, no other text:
+["question 1", "question 2", "question 3", "question 4", "question 5", "question 6"]
+
+The current date is ${todayIso} - use this for time-relative questions.
+
+USER'S ENTRIES:
 ${formattedEntries}`;
 
   try {
@@ -90,8 +100,8 @@ ${formattedEntries}`;
       },
       body: JSON.stringify({
         model: MODEL,
-        max_tokens: 512,
-        temperature: 0,
+        max_tokens: 768,
+        temperature: 0.9,
         messages: [{ role: "user", content: userPrompt }],
       }),
     });

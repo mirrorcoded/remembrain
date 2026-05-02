@@ -302,11 +302,7 @@ export default function Home() {
   const [chatInput, setChatInput] = useState("");
   const [isChatSending, setIsChatSending] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
-  /** Last completed fetch for `entriesSuggestionKey`; null means never loaded for current session baseline */
   const [suggestedChatQuestions, setSuggestedChatQuestions] = useState<string[]>([]);
-  const [suggestedQuestionsLoadedKey, setSuggestedQuestionsLoadedKey] = useState<string | null>(
-    null,
-  );
   const [suggestedQuestionsLoading, setSuggestedQuestionsLoading] = useState(false);
   const [entriesRefreshing, setEntriesRefreshing] = useState(false);
   const [chatHeaderRefreshing, setChatHeaderRefreshing] = useState(false);
@@ -531,11 +527,6 @@ export default function Home() {
     return greetingLineForUser(session.user);
   }, [session, t]);
 
-  const entriesSuggestionKey = useMemo(
-    () => `${entries.length}:${entries[0]?.id ?? "none"}`,
-    [entries],
-  );
-
   const toggleTagFilter = useCallback((tag: string) => {
     setActiveTagFilters((prev) => {
       const lower = tag.toLowerCase();
@@ -756,6 +747,8 @@ export default function Home() {
       setSearchQuery("");
       setSaveNoticeMessage("");
       setSaveRetryDraft(null);
+      setSuggestedChatQuestions([]);
+      setSuggestedQuestionsLoading(false);
       bulkSelectHadSelectionRef.current = false;
       suppressNextEntryRowClickRef.current = false;
       setEntriesSelectMode(false);
@@ -988,25 +981,22 @@ export default function Home() {
     activeThreadIdRef.current = activeThreadId;
   }, [activeThreadId]);
 
-  const needsSuggestedQuestionsFetch =
-    activeTab === "chat" &&
-    Boolean(activeThreadId) &&
-    threadMessages.length === 0 &&
-    !threadMessagesLoading &&
-    !isChatSending &&
-    entries.length > 0 &&
-    suggestedQuestionsLoadedKey !== entriesSuggestionKey;
-
   useEffect(() => {
-    if (!needsSuggestedQuestionsFetch) {
+    if (
+      activeTab !== "chat" ||
+      !activeThreadId ||
+      threadMessages.length > 0 ||
+      threadMessagesLoading ||
+      isChatSending ||
+      entries.length === 0
+    ) {
       return;
     }
+
     let cancelled = false;
-    queueMicrotask(() => {
-      if (!cancelled) {
-        setSuggestedQuestionsLoading(true);
-      }
-    });
+    setSuggestedQuestionsLoading(true);
+    setSuggestedChatQuestions([]);
+
     void (async () => {
       try {
         const res = await fetch("/api/suggested-questions", {
@@ -1019,15 +1009,13 @@ export default function Home() {
           .filter((q): q is string => typeof q === "string")
           .map((q) => q.trim())
           .filter((q) => q.length > 0)
-          .slice(0, 3);
+          .slice(0, 6);
         if (!cancelled) {
           setSuggestedChatQuestions(qs);
-          setSuggestedQuestionsLoadedKey(entriesSuggestionKey);
         }
       } catch {
         if (!cancelled) {
           setSuggestedChatQuestions([]);
-          setSuggestedQuestionsLoadedKey(entriesSuggestionKey);
         }
       } finally {
         if (!cancelled) {
@@ -1035,10 +1023,18 @@ export default function Home() {
         }
       }
     })();
+
     return () => {
       cancelled = true;
     };
-  }, [needsSuggestedQuestionsFetch, entriesSuggestionKey]);
+  }, [
+    activeTab,
+    activeThreadId,
+    threadMessages.length,
+    threadMessagesLoading,
+    isChatSending,
+    entries.length,
+  ]);
 
   function adjustChatComposerHeight() {
     const el = chatComposerRef.current;
@@ -1055,6 +1051,10 @@ export default function Home() {
     if (error || !data) {
       setChatError(t("common.couldNotCreateChat"));
       return;
+    }
+    if (entries.length > 0) {
+      setSuggestedChatQuestions([]);
+      setSuggestedQuestionsLoading(true);
     }
     setChatSidebarOpen(false);
     setActiveThreadId(data.id);
@@ -3487,30 +3487,33 @@ export default function Home() {
                 !isChatSending &&
                 !threadMessagesLoading &&
                 entries.length > 0 ? (
-                  <div className="space-y-2 py-4">
-                    {suggestedQuestionsLoadedKey !== entriesSuggestionKey ||
-                    suggestedQuestionsLoading ? (
-                      <p className="text-center text-sm text-zinc-500 dark:text-zinc-400">
-                        {t("common.findingSuggestions")}
-                      </p>
+                  <div className="space-y-3 py-4">
+                    <p className="text-center text-sm text-zinc-500 dark:text-zinc-400">
+                      {suggestedQuestionsLoading ? t("common.findingSuggestions") : t("common.tryAsking")}
+                    </p>
+                    {suggestedQuestionsLoading ? (
+                      <div
+                        className="mx-auto grid w-full max-w-2xl grid-cols-1 gap-2 sm:grid-cols-2"
+                        aria-busy="true"
+                        aria-label={t("common.findingSuggestions")}
+                      >
+                        {Array.from({ length: 6 }, (_, i) => (
+                          <div key={`suggestion-skel-${i}`} className="suggestion-pill-skeleton w-full" />
+                        ))}
+                      </div>
                     ) : suggestedChatQuestions.length > 0 ? (
-                      <>
-                        <p className="text-center text-sm text-zinc-500 dark:text-zinc-400">
-                          {t("common.tryAsking")}
-                        </p>
-                        <div className="flex flex-col gap-2 sm:items-center">
-                          {suggestedChatQuestions.map((q, index) => (
-                            <button
-                              key={`${index}-${q.slice(0, 80)}`}
-                              type="button"
-                              onClick={() => handleSuggestedQuestion(q)}
-                              className="w-full max-w-md rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2.5 text-left text-sm text-zinc-800 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-200"
-                            >
-                              {q}
-                            </button>
-                          ))}
-                        </div>
-                      </>
+                      <div className="mx-auto grid w-full max-w-2xl grid-cols-1 gap-2 sm:grid-cols-2">
+                        {suggestedChatQuestions.map((q, index) => (
+                          <button
+                            key={`${index}-${q.slice(0, 80)}`}
+                            type="button"
+                            onClick={() => handleSuggestedQuestion(q)}
+                            className="rounded-full border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-left text-sm leading-snug text-zinc-800 transition hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-200 dark:hover:bg-zinc-900"
+                          >
+                            {q}
+                          </button>
+                        ))}
+                      </div>
                     ) : (
                       <p className="text-center text-sm text-zinc-600 dark:text-zinc-400">
                         {t("common.askQuestionBelow")}
