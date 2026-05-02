@@ -1840,7 +1840,7 @@ export default function Home() {
           </div>
         </header>
 
-        <div className="sticky top-0 z-40 -mx-4 mb-5 border-b border-zinc-200 bg-zinc-100/95 pb-3 pt-2 backdrop-blur-md supports-[backdrop-filter]:bg-zinc-100/85 dark:border-zinc-800 dark:bg-zinc-950/95 dark:supports-[backdrop-filter]:bg-zinc-950/90 sm:-mx-6 sm:mb-6 sm:px-6 sm:pb-4 sm:pt-3">
+        <div className="sticky top-0 z-[60] -mx-4 mb-5 border-b border-zinc-200 bg-zinc-100/95 pb-3 pt-2 backdrop-blur-md supports-[backdrop-filter]:bg-zinc-100/85 dark:border-zinc-800 dark:bg-zinc-950/95 dark:supports-[backdrop-filter]:bg-zinc-950/90 sm:-mx-6 sm:mb-6 sm:px-6 sm:pb-4 sm:pt-3">
           <div className="grid w-full grid-cols-2 gap-2 px-4 sm:gap-3 sm:px-0">
             <button
               type="button"
@@ -2356,7 +2356,7 @@ export default function Home() {
               />
             ) : null}
 
-            <div className="flex items-center gap-2 lg:hidden">
+            <div className="relative z-[55] flex items-center gap-2 lg:z-auto lg:hidden">
               <button
                 type="button"
                 onClick={() => setChatSidebarOpen(true)}
@@ -2373,12 +2373,16 @@ export default function Home() {
               </button>
             </div>
 
-            <aside className="fixed inset-y-0 left-0 z-50 flex h-full max-h-screen w-[min(20rem,92vw)] flex-col lg:static lg:z-0 lg:h-auto lg:max-h-none lg:w-64 lg:shrink-0">
+            {/* Slide the whole aside off-screen when closed so the fixed box does not steal taps (inner-only translate left the outer hit region in place). */}
+            <aside
+              className={`fixed inset-y-0 left-0 z-50 flex h-full max-h-screen w-[min(20rem,92vw)] flex-col max-lg:transition-transform max-lg:duration-300 max-lg:ease-out lg:static lg:z-0 lg:h-auto lg:max-h-none lg:w-64 lg:shrink-0 lg:translate-x-0 ${
+                chatSidebarOpen ? "max-lg:translate-x-0" : "max-lg:-translate-x-full"
+              }`}
+              aria-hidden={!chatSidebarOpen}
+            >
               <div
                 ref={chatThreadsAsideInnerRef}
-                className={`flex h-full max-h-screen w-full flex-col overflow-hidden border-r border-zinc-200 bg-white shadow-2xl dark:border-zinc-800 dark:bg-zinc-900 max-lg:transition-transform max-lg:duration-300 max-lg:ease-out lg:max-h-none lg:rounded-2xl lg:border lg:shadow-sm ${
-                  chatSidebarOpen ? "max-lg:translate-x-0" : "max-lg:-translate-x-full"
-                } lg:translate-x-0`}
+                className="flex h-full max-h-screen w-full flex-col overflow-hidden border-r border-zinc-200 bg-white shadow-2xl dark:border-zinc-800 dark:bg-zinc-900 lg:max-h-none lg:rounded-2xl lg:border lg:shadow-sm"
                 style={
                   isMobileViewport &&
                   chatSidebarOpen &&
