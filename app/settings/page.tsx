@@ -1,6 +1,7 @@
 "use client";
 
 import { supabase } from "@/lib/supabase";
+import { normalizeTagList } from "@/lib/categories";
 import {
   formatBackupCalendarLabel,
   LAST_BACKUP_STORAGE_KEY,
@@ -18,7 +19,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 
-const BACKUP_APP_VERSION = "1.0";
+const BACKUP_APP_VERSION = "1.1";
 
 const CATEGORY_OPTIONS: { value: DefaultCategoryPreference; label: string }[] = [
   { value: "auto", label: "Auto" },
@@ -26,11 +27,8 @@ const CATEGORY_OPTIONS: { value: DefaultCategoryPreference; label: string }[] = 
   { value: "relationships", label: "Relationships" },
   { value: "career", label: "Career" },
   { value: "logistics", label: "Logistics" },
-  { value: "emotional", label: "Emotional" },
   { value: "finance", label: "Finance" },
-  { value: "ideas", label: "Ideas" },
-  { value: "learning", label: "Learning" },
-  { value: "reflection", label: "Reflection" },
+  { value: "emotional", label: "Emotional" },
   { value: "other", label: "Other" },
 ];
 
@@ -76,6 +74,11 @@ export default function SettingsPage() {
   const [prefsBusy, setPrefsBusy] = useState(false);
   const [prefsNotice, setPrefsNotice] = useState<string | null>(null);
 
+  const [tagsCatalog, setTagsCatalog] = useState<{ tag: string; count: number }[]>([]);
+  const [tagsCatalogBusy, setTagsCatalogBusy] = useState(false);
+  const [tagsCatalogError, setTagsCatalogError] = useState<string | null>(null);
+  const [tagRenameBusy, setTagRenameBusy] = useState<string | null>(null);
+
   const [signOutBusy, setSignOutBusy] = useState(false);
 
   const refreshLocalBackupLabel = useCallback(() => {
@@ -83,6 +86,42 @@ export default function SettingsPage() {
       setLastBackupIso(localStorage.getItem(LAST_BACKUP_STORAGE_KEY));
     } catch {
       setLastBackupIso(null);
+    }
+  }, []);
+
+  const refreshTagsCatalog = useCallback(async () => {
+    setTagsCatalogBusy(true);
+    setTagsCatalogError(null);
+    try {
+      const { data, error } = await supabase.from("entries").select("tags");
+      if (error) {
+        setTagsCatalogError("Could not load tags.");
+        setTagsCatalog([]);
+        return;
+      }
+      const counts = new Map<string, number>();
+      for (const row of data ?? []) {
+        const raw = row.tags;
+        if (!Array.isArray(raw)) {
+          continue;
+        }
+        for (const t of raw) {
+          if (typeof t !== "string") {
+            continue;
+          }
+          const k = t.trim();
+          if (!k) {
+            continue;
+          }
+          counts.set(k, (counts.get(k) ?? 0) + 1);
+        }
+      }
+      const rows = [...counts.entries()]
+        .map(([tag, count]) => ({ tag, count }))
+        .sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag));
+      setTagsCatalog(rows);
+    } finally {
+      setTagsCatalogBusy(false);
     }
   }, []);
 
@@ -118,11 +157,14 @@ export default function SettingsPage() {
       if (!cancelled && !error) {
         setEntryCount(count ?? 0);
       }
+      if (!cancelled) {
+        void refreshTagsCatalog();
+      }
     })();
     return () => {
       cancelled = true;
     };
-  }, [router, refreshLocalBackupLabel]);
+  }, [router, refreshLocalBackupLabel, refreshTagsCatalog]);
 
   async function handleSaveProfile(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -210,7 +252,7 @@ export default function SettingsPage() {
     try {
       const { data, error } = await supabase
         .from("entries")
-        .select("id, created_at, text, category, user_id")
+        .select("id, created_at, text, category, tags, user_id")
         .order("created_at", { ascending: true });
 
       if (error) {
@@ -224,6 +266,7 @@ export default function SettingsPage() {
         created_at: string;
         text: string | null;
         category: string | null;
+        tags: string[] | null;
         user_id: string | null;
       };
 
@@ -238,6 +281,7 @@ export default function SettingsPage() {
           created_at: row.created_at,
           text: row.text ?? "",
           category: row.category ?? "other",
+          tags: Array.isArray(row.tags) ? row.tags : [],
           user_id: row.user_id ?? null,
         })),
       };
@@ -311,6 +355,78 @@ export default function SettingsPage() {
       setTimeout(() => setPrefsNotice(null), 3000);
     } finally {
       setPrefsBusy(false);
+    }
+  }
+
+  async function handleRenameTagEverywhere(fromTag: string, toRaw: string) {
+    const toTag = toRaw.trim();
+    if (!toTag || fromTag === toTag) {
+      return;
+    }
+    setTagRenameBusy(fromTag);
+    setTagsCatalogError(null);
+    try {
+      const { data: rows, error } = await supabase.from("entries").select("id, tags");
+      if (error || !rows) {
+        setTagsCatalogError("Could not update entries.");
+        return;
+      }
+      for (const row of rows) {
+        const tags = Array.isArray(row.tags)
+          ? row.tags.filter((t): t is string => typeof t === "string")
+          : [];
+        if (!tags.some((t) => t === fromTag)) {
+          continue;
+        }
+        const next = normalizeTagList(tags.map((t) => (t === fromTag ? toTag : t)));
+        const { error: upErr } = await supabase
+          .from("entries")
+          .update({ tags: next })
+          .eq("id", row.id as number);
+        if (upErr) {
+          setTagsCatalogError("Could not rename tag.");
+          return;
+        }
+      }
+      await refreshTagsCatalog();
+    } finally {
+      setTagRenameBusy(null);
+    }
+  }
+
+  async function handleDeleteTagEverywhere(tag: string) {
+    const confirmed = window.confirm(`Remove tag "${tag}" from all entries?`);
+    if (!confirmed) {
+      return;
+    }
+    setTagRenameBusy(tag);
+    setTagsCatalogError(null);
+    try {
+      const { data: rows, error } = await supabase.from("entries").select("id, tags");
+      if (error || !rows) {
+        setTagsCatalogError("Could not update entries.");
+        return;
+      }
+      for (const row of rows) {
+        const tags = Array.isArray(row.tags)
+          ? row.tags.filter((t): t is string => typeof t === "string")
+          : [];
+        if (!tags.includes(tag)) {
+          continue;
+        }
+        const next = normalizeTagList(tags.filter((t) => t !== tag));
+        const { error: upErr } = await supabase
+          .from("entries")
+          .update({ tags: next })
+          .eq("id", row.id as number);
+        if (upErr) {
+          setTagsCatalogError("Could not remove tag.");
+          return;
+        }
+      }
+      await refreshTagsCatalog();
+    } finally {
+      setTagRenameBusy(null);
     }
   }
 
@@ -591,6 +707,67 @@ export default function SettingsPage() {
               {prefsBusy ? "Saving…" : "Save preferences"}
             </button>
           </form>
+        </section>
+
+        <section className={sectionClass} aria-labelledby="tags-heading">
+          <h2 id="tags-heading" className="text-base font-semibold">
+            Tags
+          </h2>
+          <p className="text-sm text-zinc-600 dark:text-zinc-400">
+            Rename or remove tags across all entries. Changes apply immediately.
+          </p>
+          {tagsCatalogError ? (
+            <p className="text-sm text-red-700 dark:text-red-300">{tagsCatalogError}</p>
+          ) : null}
+          {tagsCatalogBusy ? (
+            <p className="text-sm text-zinc-500">Loading tags…</p>
+          ) : tagsCatalog.length === 0 ? (
+            <p className="text-sm text-zinc-500">No tags yet.</p>
+          ) : (
+            <ul className="divide-y divide-zinc-200 rounded-xl border border-zinc-200 dark:divide-zinc-700 dark:border-zinc-700">
+              {tagsCatalog.map((row) => (
+                <li
+                  key={row.tag}
+                  className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm"
+                >
+                  <span className="font-medium text-zinc-900 dark:text-zinc-100">{row.tag}</span>
+                  <span className="tabular-nums text-zinc-500">{row.count}</span>
+                  <div className="flex w-full shrink-0 gap-2 sm:w-auto sm:justify-end">
+                    <button
+                      type="button"
+                      disabled={tagRenameBusy !== null}
+                      onClick={() => {
+                        const next = window.prompt(`Rename tag "${row.tag}" to:`, row.tag);
+                        if (next === null) {
+                          return;
+                        }
+                        void handleRenameTagEverywhere(row.tag, next);
+                      }}
+                      className="rounded-lg border border-zinc-300 px-2 py-1 text-xs dark:border-zinc-600"
+                    >
+                      {tagRenameBusy === row.tag ? "…" : "Rename"}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={tagRenameBusy !== null}
+                      onClick={() => void handleDeleteTagEverywhere(row.tag)}
+                      className="rounded-lg border border-red-200 px-2 py-1 text-xs text-red-800 dark:border-red-900 dark:text-red-200"
+                    >
+                      {tagRenameBusy === row.tag ? "…" : "Remove"}
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+          <button
+            type="button"
+            onClick={() => void refreshTagsCatalog()}
+            disabled={tagsCatalogBusy}
+            className="mt-2 text-sm font-medium text-zinc-700 underline-offset-2 hover:underline dark:text-zinc-300"
+          >
+            Refresh list
+          </button>
         </section>
       </main>
 

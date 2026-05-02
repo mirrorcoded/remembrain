@@ -13,29 +13,31 @@ import {
 import Link from "next/link";
 
 import {
+  CATEGORY_LABELS,
+  KNOWN_CATEGORIES,
+  categoryBadgeClass,
+  categoryBarFillClass,
+  categoryDisplayLabel,
+  entryMatchesKnownCategoryFilter,
+  isKnownCategory,
+  normalizeTagList,
+  persistEntryCategory,
+  sanitizeCategoryForStorage,
+  type KnownCategory,
+} from "@/lib/categories";
+import {
   readDefaultCategoryPreference,
   readStatsExpandedPreference,
 } from "@/lib/remembrain-preferences";
 import { supabase } from "@/lib/supabase";
 import { greetingLineForUser } from "@/lib/user-profile";
 
-type Category =
-  | "health"
-  | "relationships"
-  | "career"
-  | "logistics"
-  | "emotional"
-  | "finance"
-  | "ideas"
-  | "learning"
-  | "reflection"
-  | "other";
-
 type Entry = {
   id: number;
   text: string;
   created_at: string;
-  category: Category;
+  category: string;
+  tags: string[];
 };
 
 type SpeechRecognitionResultLike = {
@@ -65,8 +67,8 @@ type SpeechRecognitionLike = {
 type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
 type ExportFormat = "markdown" | "text" | "json";
 type ExportScope = "all" | "filtered" | "date-range";
-type NewEntryCategorySelection = "auto" | Category;
-type ProcessApiEntry = { text?: string; category?: string };
+type NewEntryCategorySelection = "auto" | KnownCategory;
+type ProcessApiEntry = { text?: string; category?: string; tags?: unknown };
 type ChatMessage = { role: "user" | "assistant"; content: string };
 
 type ChatThreadRow = {
@@ -106,41 +108,7 @@ function formatTimeOnly(timestamp: string): string {
   }).format(new Date(timestamp));
 }
 
-const CATEGORY_BADGE_STYLES: Record<Category, string> = {
-  health:
-    "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200",
-  relationships:
-    "bg-pink-100 text-pink-800 dark:bg-pink-900/40 dark:text-pink-200",
-  career:
-    "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-200",
-  logistics:
-    "bg-zinc-300 text-zinc-800 dark:bg-zinc-700 dark:text-zinc-100",
-  emotional:
-    "bg-violet-100 text-violet-800 dark:bg-violet-900/40 dark:text-violet-200",
-  finance:
-    "bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-100",
-  ideas:
-    "bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-200",
-  learning:
-    "bg-teal-100 text-teal-800 dark:bg-teal-900/40 dark:text-teal-200",
-  reflection:
-    "bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-200",
-  other: "bg-zinc-200 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200",
-};
-
-/** Solid fills for stats bars (same hues as category badges). */
-const CATEGORY_BAR_FILL_CLASSES: Record<Category, string> = {
-  health: "bg-emerald-500 dark:bg-emerald-400",
-  relationships: "bg-pink-500 dark:bg-pink-400",
-  career: "bg-blue-500 dark:bg-blue-400",
-  logistics: "bg-zinc-500 dark:bg-zinc-400",
-  emotional: "bg-violet-500 dark:bg-violet-400",
-  finance: "bg-amber-500 dark:bg-amber-400",
-  ideas: "bg-orange-500 dark:bg-orange-400",
-  learning: "bg-teal-500 dark:bg-teal-400",
-  reflection: "bg-indigo-500 dark:bg-indigo-400",
-  other: "bg-zinc-400 dark:bg-zinc-500",
-};
+const ALL_CATEGORIES: KnownCategory[] = [...KNOWN_CATEGORIES];
 
 function formatLocalYmd(d: Date): string {
   const y = d.getFullYear();
@@ -204,34 +172,6 @@ function groupFilteredEntriesByLocalDate(
   return groups;
 }
 
-const CATEGORY_ORDER: Category[] = [
-  "health",
-  "relationships",
-  "career",
-  "logistics",
-  "emotional",
-  "finance",
-  "ideas",
-  "learning",
-  "reflection",
-  "other",
-];
-
-const ALL_CATEGORIES: Category[] = [...CATEGORY_ORDER];
-
-const CATEGORY_LABELS: Record<Category, string> = {
-  health: "Health",
-  relationships: "Relationships",
-  career: "Career",
-  logistics: "Logistics",
-  emotional: "Emotional",
-  finance: "Finance",
-  ideas: "Ideas",
-  learning: "Learning",
-  reflection: "Reflection",
-  other: "Other",
-};
-
 const ENTRY_LONG_PRESS_MS = 500;
 const ENTRY_LONG_PRESS_MOVE_PX = 10;
 
@@ -256,25 +196,6 @@ function formatShortThreadDate(iso: string): string {
     day: "numeric",
     year: "numeric",
   }).format(new Date(iso));
-}
-
-function sanitizeCategory(value: string): Category {
-  const normalizedCategory = value.trim().toLowerCase();
-  switch (normalizedCategory) {
-    case "health":
-    case "relationships":
-    case "career":
-    case "logistics":
-    case "emotional":
-    case "finance":
-    case "ideas":
-    case "learning":
-    case "reflection":
-    case "other":
-      return normalizedCategory;
-    default:
-      return "other";
-  }
 }
 
 const PULL_REFRESH_THRESHOLD_PX = 80;
@@ -306,13 +227,16 @@ export default function Home() {
     useState<NewEntryCategorySelection>("auto");
   const [entries, setEntries] = useState<Entry[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
-  const [activeCategory, setActiveCategory] = useState<"all" | Category>("all");
+  const [activeCategory, setActiveCategory] = useState<"all" | KnownCategory>("all");
+  const [activeTagFilter, setActiveTagFilter] = useState<string | null>(null);
   const [isMounted, setIsMounted] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [speechErrorMessage, setSpeechErrorMessage] = useState<string | null>(null);
   const [editingEntryId, setEditingEntryId] = useState<number | null>(null);
   const [editingText, setEditingText] = useState("");
-  const [editingCategory, setEditingCategory] = useState<Category>("other");
+  const [editingCategory, setEditingCategory] = useState<string>("other");
+  const [editingTags, setEditingTags] = useState<string[]>([]);
+  const [editingTagInput, setEditingTagInput] = useState("");
   const [isUpdatingEntry, setIsUpdatingEntry] = useState(false);
   const [deletingEntryId, setDeletingEntryId] = useState<number | null>(null);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
@@ -320,7 +244,7 @@ export default function Home() {
   const [exportScope, setExportScope] = useState<ExportScope>("all");
   const [exportStartDate, setExportStartDate] = useState("");
   const [exportEndDate, setExportEndDate] = useState("");
-  const [selectedExportCategories, setSelectedExportCategories] = useState<Category[]>(
+  const [selectedExportCategories, setSelectedExportCategories] = useState<KnownCategory[]>(
     ALL_CATEGORIES,
   );
   const [copyFeedback, setCopyFeedback] = useState("");
@@ -415,31 +339,77 @@ export default function Home() {
   const bulkSelectHadSelectionRef = useRef(false);
 
   const statsCategoryRows = useMemo(() => {
-    const counts: Record<Category, number> = {
+    const counts: Record<KnownCategory, number> = {
       health: 0,
       relationships: 0,
       career: 0,
       logistics: 0,
-      emotional: 0,
       finance: 0,
-      ideas: 0,
-      learning: 0,
-      reflection: 0,
+      emotional: 0,
       other: 0,
     };
+    let legacyCount = 0;
     for (const entry of entries) {
-      counts[entry.category] += 1;
+      const c = entry.category.trim().toLowerCase();
+      if (isKnownCategory(c)) {
+        counts[c] += 1;
+      } else {
+        legacyCount += 1;
+      }
     }
-    return ALL_CATEGORIES.map((category) => ({
-      category,
-      count: counts[category],
-    })).sort((a, b) => {
+    const rows: { key: string; label: string; count: number; barClass: string }[] =
+      ALL_CATEGORIES.map((category) => ({
+        key: category,
+        label: CATEGORY_LABELS[category],
+        count: counts[category],
+        barClass: categoryBarFillClass(category),
+      }));
+    if (legacyCount > 0) {
+      rows.push({
+        key: "legacy",
+        label: "Older categories",
+        count: legacyCount,
+        barClass: categoryBarFillClass("other"),
+      });
+    }
+    return rows.sort((a, b) => {
       if (b.count !== a.count) {
         return b.count - a.count;
       }
-      return a.category.localeCompare(b.category);
+      return a.label.localeCompare(b.label);
     });
   }, [entries]);
+
+  const tagFrequencyList = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const entry of entries) {
+      for (const t of entry.tags) {
+        const k = t.trim();
+        if (!k) {
+          continue;
+        }
+        map.set(k, (map.get(k) ?? 0) + 1);
+      }
+    }
+    return [...map.entries()]
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .map(([tag, count]) => ({ tag, count }));
+  }, [entries]);
+
+  const tagAutocompletePool = useMemo(() => {
+    const ordered = tagFrequencyList.map(({ tag }) => tag);
+    const set = new Set(ordered);
+    for (const entry of entries) {
+      for (const t of entry.tags) {
+        const k = t.trim();
+        if (k && !set.has(k)) {
+          set.add(k);
+          ordered.push(k);
+        }
+      }
+    }
+    return ordered;
+  }, [entries, tagFrequencyList]);
 
   const statsLast30Days = useMemo(() => {
     const today = new Date();
@@ -487,12 +457,15 @@ export default function Home() {
     return entries.filter((entry) => {
       const matchesSearch =
         normalizedSearch.length === 0 ||
-        entry.text.toLowerCase().includes(normalizedSearch);
-      const matchesCategory =
-        activeCategory === "all" || entry.category === activeCategory;
-      return matchesSearch && matchesCategory;
+        entry.text.toLowerCase().includes(normalizedSearch) ||
+        entry.tags.some((t) => t.toLowerCase().includes(normalizedSearch));
+      const matchesCategory = entryMatchesKnownCategoryFilter(entry.category, activeCategory);
+      const matchesTag =
+        !activeTagFilter ||
+        entry.tags.some((t) => t.toLowerCase() === activeTagFilter.toLowerCase());
+      return matchesSearch && matchesCategory && matchesTag;
     });
-  }, [entries, searchQuery, activeCategory]);
+  }, [entries, searchQuery, activeCategory, activeTagFilter]);
 
   const groupedFilteredEntries = useMemo(
     () => groupFilteredEntriesByLocalDate(filteredEntries, new Date(clockTickMs)),
@@ -511,7 +484,8 @@ export default function Home() {
     [entries],
   );
 
-  const isFilterActive = searchQuery.trim().length > 0 || activeCategory !== "all";
+  const isFilterActive =
+    searchQuery.trim().length > 0 || activeCategory !== "all" || activeTagFilter !== null;
 
   const loadEntries = useCallback(async (options?: { silent?: boolean }) => {
     const silent = options?.silent ?? false;
@@ -524,7 +498,7 @@ export default function Home() {
 
     const { data, error } = await supabase
       .from("entries")
-      .select("id, created_at, text, category")
+      .select("id, created_at, text, category, tags")
       .order("created_at", { ascending: false });
 
     if (error) {
@@ -539,7 +513,8 @@ export default function Home() {
 
     const normalizedEntries: Entry[] = (data ?? []).map((entry) => ({
       ...entry,
-      category: sanitizeCategory(entry.category ?? "other"),
+      category: (entry.category ?? "other").trim().toLowerCase(),
+      tags: normalizeTagList(entry.tags),
     }));
 
     setEntries(normalizedEntries);
@@ -687,6 +662,11 @@ export default function Home() {
       setEditingEntryId(null);
       setEditingText("");
       setEditingCategory("other");
+      setEditingTags([]);
+      setEditingTagInput("");
+      setActiveTagFilter(null);
+      setActiveCategory("all");
+      setSearchQuery("");
       setSaveNoticeMessage("");
       setSaveInlineStatus("");
       setIsSaving(false);
@@ -1751,8 +1731,8 @@ export default function Home() {
     setSaveInlineStatus(useAutoCategory ? "Got it..." : "Saving...");
     stopListening({ discardPendingCommit: true });
 
-    let processedEntries: Array<{ text: string; category: Category }> = [
-      { text: trimmedText, category: "other" },
+    let processedEntries: Array<{ text: string; category: KnownCategory; tags: string[] }> = [
+      { text: trimmedText, category: "other", tags: [] },
     ];
 
     function abortSave(restoreText: boolean) {
@@ -1791,7 +1771,8 @@ export default function Home() {
           result.entries
             ?.map((entry) => ({
               text: entry.text?.trim() ?? "",
-              category: sanitizeCategory(entry.category ?? "other"),
+              category: sanitizeCategoryForStorage(entry.category),
+              tags: normalizeTagList(entry.tags),
             }))
             .filter((entry) => entry.text.length > 0) ?? [];
 
@@ -1809,14 +1790,18 @@ export default function Home() {
       }
     } catch {
       if (newEntryCategorySelection !== "auto") {
-        processedEntries = [{ text: trimmedText, category: newEntryCategorySelection }];
+        processedEntries = [
+          { text: trimmedText, category: newEntryCategorySelection, tags: [] },
+        ];
       }
     }
 
     for (const entry of processedEntries) {
-      const { error } = await supabase
-        .from("entries")
-        .insert({ text: entry.text, category: entry.category });
+      const { error } = await supabase.from("entries").insert({
+        text: entry.text,
+        category: entry.category,
+        tags: entry.tags,
+      });
 
       if (error) {
         setErrorMessage("Could not save entry. Please try again.");
@@ -1837,13 +1822,32 @@ export default function Home() {
     setEditingEntryId(entry.id);
     setEditingText(entry.text);
     setEditingCategory(entry.category);
+    setEditingTags([...entry.tags]);
+    setEditingTagInput("");
   }
 
   function handleCancelEdit() {
     setEditingEntryId(null);
     setEditingText("");
     setEditingCategory("other");
+    setEditingTags([]);
+    setEditingTagInput("");
     setIsUpdatingEntry(false);
+  }
+
+  function commitEditingTagFromInput() {
+    const raw = editingTagInput.trim();
+    if (!raw) {
+      return;
+    }
+    const exists = editingTags.some((t) => t.toLowerCase() === raw.toLowerCase());
+    if (exists) {
+      setEditingTagInput("");
+      return;
+    }
+    const next = normalizeTagList([...editingTags, raw]);
+    setEditingTags(next);
+    setEditingTagInput("");
   }
 
   async function handleSaveEdit(entryId: number) {
@@ -1855,9 +1859,12 @@ export default function Home() {
     setIsUpdatingEntry(true);
     setErrorMessage(null);
 
+    const categoryToSave = persistEntryCategory(editingCategory);
+    const tagsToSave = normalizeTagList(editingTags);
+
     const { error } = await supabase
       .from("entries")
-      .update({ text: trimmedText, category: editingCategory })
+      .update({ text: trimmedText, category: categoryToSave, tags: tagsToSave })
       .eq("id", entryId);
 
     if (error) {
@@ -1895,7 +1902,7 @@ export default function Home() {
     setDeletingEntryId(null);
   }
 
-  function toggleExportCategory(category: Category) {
+  function toggleExportCategory(category: KnownCategory) {
     setSelectedExportCategories((previousCategories) =>
       previousCategories.includes(category)
         ? previousCategories.filter((item) => item !== category)
@@ -1907,7 +1914,10 @@ export default function Home() {
     const sourceEntries = exportScope === "filtered" ? filteredEntries : entries;
 
     return sourceEntries.filter((entry) => {
-      if (!selectedExportCategories.includes(entry.category)) {
+      const inSelected = selectedExportCategories.some((sel) =>
+        entryMatchesKnownCategoryFilter(entry.category, sel),
+      );
+      if (!inSelected) {
         return false;
       }
 
@@ -1964,10 +1974,12 @@ export default function Home() {
       }
 
       lines.push(
-        `- ${formatTimeOnly(entry.created_at)} - ${CATEGORY_LABELS[entry.category]}`,
-        `${entry.text}`,
-        "",
+        `- ${formatTimeOnly(entry.created_at)} - ${categoryDisplayLabel(entry.category)}`,
       );
+      if (entry.tags.length > 0) {
+        lines.push(`Tags: ${entry.tags.join(", ")}`);
+      }
+      lines.push(`${entry.text}`, "");
     });
 
     return lines.join("\n").trim();
@@ -1989,11 +2001,11 @@ export default function Home() {
         lines.push(dateHeading);
       }
 
-      lines.push(
-        `${formatTimeOnly(entry.created_at)} - ${CATEGORY_LABELS[entry.category]}`,
-        `${entry.text}`,
-        "",
-      );
+      lines.push(`${formatTimeOnly(entry.created_at)} - ${categoryDisplayLabel(entry.category)}`);
+      if (entry.tags.length > 0) {
+        lines.push(`Tags: ${entry.tags.join(", ")}`);
+      }
+      lines.push(`${entry.text}`, "");
     });
 
     return lines.join("\n").trim();
@@ -2007,6 +2019,7 @@ export default function Home() {
           created_at: entry.created_at,
           text: entry.text,
           category: entry.category,
+          tags: entry.tags,
         })),
         null,
         2,
@@ -2407,7 +2420,7 @@ export default function Home() {
                   disabled={isSaving}
                   className={`rounded-full px-3 py-1.5 text-xs font-medium capitalize transition disabled:cursor-not-allowed disabled:opacity-50 ${
                     newEntryCategorySelection === category
-                      ? CATEGORY_BADGE_STYLES[category]
+                      ? categoryBadgeClass(category)
                       : "bg-zinc-200 text-zinc-700 hover:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
                   }`}
                 >
@@ -2445,15 +2458,15 @@ export default function Home() {
                   By category
                 </p>
                 <div className="space-y-2">
-                  {statsCategoryRows.map(({ category, count }) => (
-                    <div key={category} className="flex items-center gap-2 text-xs">
+                  {statsCategoryRows.map(({ key, label, count, barClass }) => (
+                    <div key={key} className="flex items-center gap-2 text-xs">
                       <span className="w-[7.5rem] shrink-0 truncate text-zinc-600 dark:text-zinc-400">
-                        {CATEGORY_LABELS[category]}
+                        {label}
                       </span>
                       <div className="flex min-w-0 flex-1 items-center gap-2">
                         <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-700">
                           <div
-                            className={`h-full rounded-full ${CATEGORY_BAR_FILL_CLASSES[category]}`}
+                            className={`h-full rounded-full ${barClass}`}
                             style={{
                               width:
                                 statsCategoryMax > 0
@@ -2557,7 +2570,7 @@ export default function Home() {
                   type="search"
                   value={searchQuery}
                   onChange={(event) => setSearchQuery(event.target.value)}
-                  placeholder="Search by text..."
+                  placeholder="Search text or tags…"
                   className="w-full rounded-xl border border-zinc-300 bg-zinc-50 px-3 py-2 text-sm outline-none transition focus:border-zinc-400 focus:ring-2 focus:ring-zinc-300 dark:border-zinc-700 dark:bg-zinc-950 dark:focus:border-zinc-500 dark:focus:ring-zinc-700"
                 />
                 <div className="flex flex-wrap gap-2">
@@ -2579,7 +2592,7 @@ export default function Home() {
                       onClick={() => setActiveCategory(category)}
                       className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
                         activeCategory === category
-                          ? CATEGORY_BADGE_STYLES[category]
+                          ? categoryBadgeClass(category)
                           : "bg-zinc-200 text-zinc-700 hover:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
                       }`}
                     >
@@ -2587,6 +2600,43 @@ export default function Home() {
                     </button>
                   ))}
                 </div>
+                {tagFrequencyList.length > 0 ? (
+                  <div className="space-y-1.5">
+                    <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400">Tags</p>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setActiveTagFilter(null)}
+                        className={`rounded-full px-3 py-1 text-[11px] font-medium transition ${
+                          activeTagFilter === null
+                            ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+                            : "bg-zinc-200 text-zinc-700 hover:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
+                        }`}
+                      >
+                        All tags
+                      </button>
+                      {tagFrequencyList.map(({ tag, count }) => (
+                        <button
+                          key={tag}
+                          type="button"
+                          onClick={() =>
+                            setActiveTagFilter((prev) => (prev === tag ? null : tag))
+                          }
+                          className={`rounded-full px-2.5 py-1 text-[11px] font-medium transition ${
+                            activeTagFilter === tag
+                              ? "bg-zinc-800 text-white dark:bg-zinc-200 dark:text-zinc-900"
+                              : "border border-zinc-200 bg-zinc-50 text-zinc-700 hover:bg-zinc-100 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                          }`}
+                        >
+                          {tag}
+                          <span className="ml-1 tabular-nums text-zinc-500 dark:text-zinc-400">
+                            {count}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
                 <p className="text-sm text-zinc-600 dark:text-zinc-400">
                   Showing {filteredEntries.length} of {entries.length} entries
                 </p>
@@ -2699,13 +2749,16 @@ export default function Home() {
                                       <select
                                         value={editingCategory}
                                         onChange={(event) =>
-                                          setEditingCategory(
-                                            sanitizeCategory(event.target.value),
-                                          )
+                                          setEditingCategory(event.target.value.trim().toLowerCase())
                                         }
                                         onClick={(e) => e.stopPropagation()}
                                         className="rounded-lg border border-zinc-300 bg-zinc-50 px-2 py-1 text-xs outline-none transition focus:border-zinc-400 focus:ring-2 focus:ring-zinc-300 dark:border-zinc-700 dark:bg-zinc-950 dark:focus:border-zinc-500 dark:focus:ring-zinc-700"
                                       >
+                                        {!isKnownCategory(entry.category) ? (
+                                          <option value={entry.category}>
+                                            {categoryDisplayLabel(entry.category)} (older)
+                                          </option>
+                                        ) : null}
                                         {ALL_CATEGORIES.map((category) => (
                                           <option key={category} value={category}>
                                             {CATEGORY_LABELS[category]}
@@ -2715,9 +2768,9 @@ export default function Home() {
                                     ) : (
                                       <span
                                         data-entry-longpress-ignore
-                                        className={`inline-flex rounded-full px-2 py-1 text-xs font-medium ${CATEGORY_BADGE_STYLES[entry.category]}`}
+                                        className={`inline-flex rounded-full px-2 py-1 text-xs font-medium ${categoryBadgeClass(entry.category)}`}
                                       >
-                                        {CATEGORY_LABELS[entry.category]}
+                                        {categoryDisplayLabel(entry.category)}
                                       </span>
                                     )}
                                     {!entriesSelectMode ? (
@@ -2758,6 +2811,68 @@ export default function Home() {
                                       onClick={(e) => e.stopPropagation()}
                                       className="mt-2 min-h-24 w-full resize-y rounded-xl border border-zinc-300 bg-zinc-50 px-3 py-2 text-base outline-none transition focus:border-zinc-400 focus:ring-2 focus:ring-zinc-300 dark:border-zinc-700 dark:bg-zinc-950 dark:focus:border-zinc-500 dark:focus:ring-zinc-700"
                                     />
+                                    <div
+                                      className="mt-2 flex flex-wrap gap-1.5"
+                                      onClick={(e) => e.stopPropagation()}
+                                    >
+                                      {editingTags.map((tag) => (
+                                        <span
+                                          key={tag}
+                                          className="inline-flex items-center gap-1 rounded-full bg-zinc-200 px-2 py-0.5 text-[11px] font-medium text-zinc-800 dark:bg-zinc-700 dark:text-zinc-100"
+                                        >
+                                          {tag}
+                                          <button
+                                            type="button"
+                                            aria-label={`Remove tag ${tag}`}
+                                            className="rounded px-0.5 text-zinc-600 hover:text-zinc-900 dark:text-zinc-300 dark:hover:text-white"
+                                            onClick={() =>
+                                              setEditingTags(editingTags.filter((t) => t !== tag))
+                                            }
+                                          >
+                                            ×
+                                          </button>
+                                        </span>
+                                      ))}
+                                    </div>
+                                    <div
+                                      className="mt-2 flex min-w-0 flex-col gap-1 sm:flex-row sm:items-center"
+                                      onClick={(e) => e.stopPropagation()}
+                                    >
+                                      <input
+                                        type="text"
+                                        list={`edit-tag-datalist-${entry.id}`}
+                                        value={editingTagInput}
+                                        onChange={(e) => setEditingTagInput(e.target.value)}
+                                        onKeyDown={(e) => {
+                                          if (e.key === "Enter") {
+                                            e.preventDefault();
+                                            commitEditingTagFromInput();
+                                          }
+                                        }}
+                                        placeholder="Add tag…"
+                                        className="min-h-9 w-full min-w-0 rounded-lg border border-zinc-300 bg-white px-2 py-1.5 text-xs outline-none transition focus:border-zinc-400 focus:ring-2 focus:ring-zinc-300 dark:border-zinc-600 dark:bg-zinc-950 dark:focus:border-zinc-500 dark:focus:ring-zinc-700 sm:max-w-xs"
+                                      />
+                                      <datalist id={`edit-tag-datalist-${entry.id}`}>
+                                        {tagAutocompletePool
+                                          .filter(
+                                            (t) =>
+                                              !editingTags.some(
+                                                (x) => x.toLowerCase() === t.toLowerCase(),
+                                              ),
+                                          )
+                                          .filter((t) =>
+                                            editingTagInput.trim()
+                                              ? t
+                                                  .toLowerCase()
+                                                  .includes(editingTagInput.trim().toLowerCase())
+                                              : true,
+                                          )
+                                          .slice(0, 50)
+                                          .map((t) => (
+                                            <option key={t} value={t} />
+                                          ))}
+                                      </datalist>
+                                    </div>
                                     <div className="mt-2 flex flex-wrap gap-2">
                                       <button
                                         type="button"
@@ -2784,9 +2899,38 @@ export default function Home() {
                                     </div>
                                   </>
                                 ) : (
-                                  <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed">
-                                    {entry.text}
-                                  </p>
+                                  <>
+                                    <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed">
+                                      {entry.text}
+                                    </p>
+                                    {entry.tags.length > 0 ? (
+                                      <div
+                                        className="mt-2 flex flex-wrap gap-1.5"
+                                        onClick={(e) => e.stopPropagation()}
+                                      >
+                                        {entry.tags.map((tag) => (
+                                          <button
+                                            key={`${entry.id}-${tag}`}
+                                            type="button"
+                                            data-entry-longpress-ignore
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setActiveTagFilter((prev) =>
+                                                prev === tag ? null : tag,
+                                              );
+                                            }}
+                                            className={`rounded-full px-2 py-0.5 text-[11px] font-medium transition ${
+                                              activeTagFilter === tag
+                                                ? "bg-zinc-800 text-white dark:bg-zinc-200 dark:text-zinc-900"
+                                                : "border border-zinc-200 bg-zinc-50 text-zinc-600 hover:bg-zinc-100 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                                            }`}
+                                          >
+                                            {tag}
+                                          </button>
+                                        ))}
+                                      </div>
+                                    ) : null}
+                                  </>
                                 )}
                               </div>
                             </div>

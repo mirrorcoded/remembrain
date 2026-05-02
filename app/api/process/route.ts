@@ -1,3 +1,8 @@
+import {
+  normalizeTagList,
+  sanitizeCategoryForStorage,
+  type KnownCategory,
+} from "@/lib/categories";
 import { getAuthenticatedSupabase } from "@/lib/supabase/server";
 import {
   possessiveExample,
@@ -6,31 +11,14 @@ import {
 } from "@/lib/user-profile";
 import { NextResponse } from "next/server";
 
-const CATEGORIES = new Set([
-  "health",
-  "relationships",
-  "career",
-  "logistics",
-  "emotional",
-  "finance",
-  "ideas",
-  "learning",
-  "reflection",
-  "other",
-]);
-
 type ProcessedEntry = {
   text: string;
-  category: string;
+  category: KnownCategory;
+  tags: string[];
 };
 
-function sanitizeCategory(value: string | undefined): string {
-  if (!value) {
-    return "other";
-  }
-
-  const normalizedValue = value.trim().toLowerCase();
-  return CATEGORIES.has(normalizedValue) ? normalizedValue : "other";
+function sanitizeCategory(value: string | undefined): KnownCategory {
+  return sanitizeCategoryForStorage(value);
 }
 
 function fallbackEntries(originalText: string): {
@@ -43,6 +31,7 @@ function fallbackEntries(originalText: string): {
       {
         text: originalText,
         category: "other",
+        tags: [],
       },
     ],
   };
@@ -51,7 +40,7 @@ function fallbackEntries(originalText: string): {
 /** Strip markdown fences and parse Claude's entries JSON; returns null on failure. */
 function parseEntriesFromModelText(modelText: string): {
   acknowledgment?: string;
-  entries?: Array<{ text?: string; category?: string }>;
+  entries?: Array<{ text?: string; category?: string; tags?: unknown }>;
 } | null {
   let trimmed = modelText.trim();
   const fenceMatch = trimmed.match(/^```(?:json)?\s*([\s\S]*?)```\s*$/m);
@@ -62,7 +51,7 @@ function parseEntriesFromModelText(modelText: string): {
   try {
     return JSON.parse(trimmed) as {
       acknowledgment?: string;
-      entries?: Array<{ text?: string; category?: string }>;
+      entries?: Array<{ text?: string; category?: string; tags?: unknown }>;
     };
   } catch (error) {
     console.error(
@@ -132,6 +121,17 @@ Guardrails:
 - If there is genuinely no first-person author reference left to rewrite, leave wording unchanged aside from step 1 cleanup.`;
 }
 
+const TAG_EXTRACTION_BLOCK = `TAGS (for EACH entry in the entries array):
+Also extract relevant tags from that entry's content. Tags should be:
+- Names of specific people mentioned (e.g. Dan Bi, mom, Eugene Park)
+- Specific topics or things (e.g. Abilify, NYU, Cozyberry, bipolar)
+- Use consistent capitalization as in the entry when reasonable (e.g. Dan Bi not danbi)
+- Don't tag generic concepts if you can tag a specific person or thing instead (don't tag "family" if you can tag the specific family member)
+- Limit to 5 tags max per entry
+- Use an empty array [] if the entry is too short or generic to need tags
+
+Return tags in the JSON as shown below.`;
+
 function buildAutoSystemPrompt(
   userName: string,
   pronounsLine: string,
@@ -158,17 +158,16 @@ EXAMPLES that should NOT split (single topic):
 - 'started Abilify 2mg, sleeping better, slight irritation' (all about same med transition - one entry, health)
 - 'Dan Bi and I had dinner at the new ramen place tonight' (one event - relationships)
 
-STEP 3 - Categorize each entry. Use these 10 categories:
-- health: medications, symptoms, body, sleep, exercise, mental health
+STEP 3 - Categorize each entry. Use exactly ONE of these 7 categories (lowercase slug in JSON):
+- health: medications, symptoms, body, sleep, exercise, clinical mental health treatment
 - relationships: family, friends, partner, social interactions, conversations with people, facts ABOUT specific people in user's life
 - career: work, jobs, applications, school, business operations
 - logistics: scheduling, travel, dates, locations, biographical facts (birthday, age, address)
-- emotional: in-the-moment feelings, mood
 - finance: money, spending, costs, bills, investments
-- ideas: product/business ideas, creative thoughts, things to build
-- learning: things read/watched/learned, skills being acquired
-- reflection: pattern-noticing about oneself, self-observations, meta-cognitive insights
+- emotional: feelings, mood, anxiety, joy in the moment; pattern-noticing and self-reflection about feelings also go here (formerly "reflection")
 - other: ONLY when truly nothing fits
+
+STEP 3b - ${TAG_EXTRACTION_BLOCK}
 
 ${thirdPersonInstructionBlock(userName, pronounsLine, examplePossessive)}
 
@@ -181,14 +180,14 @@ After processing the entry, also generate a brief, natural acknowledgment messag
 Don't be overly chatty or use exclamation marks. Just a calm confirmation.
 
 Return ONLY valid JSON, no markdown:
-{"acknowledgment": "brief calm confirmation under 8 words", "entries": [{"text": "cleaned and third-person text", "category": "category"}]}`;
+{"acknowledgment": "brief calm confirmation under 8 words", "entries": [{"text": "cleaned and third-person text", "category": "health|relationships|career|logistics|finance|emotional|other", "tags": ["Tag One", "Tag Two"]}]}`;
 }
 
 function buildManualSystemPrompt(
   userName: string,
   pronounsLine: string,
   examplePossessive: string,
-  fixedCategory: string,
+  fixedCategory: KnownCategory,
 ): string {
   return `You are processing a single journal entry for a personal memory app.
 
@@ -200,12 +199,14 @@ STEP 1 - Clean the text:
 - Fix broken grammar
 - Preserve the user's voice and meaning
 
+STEP 2 - ${TAG_EXTRACTION_BLOCK}
+
 ${thirdPersonInstructionBlock(userName, pronounsLine, examplePossessive)}
 
 After processing, generate a brief acknowledgment under 8 words.
 
 Return ONLY valid JSON, no markdown:
-{"acknowledgment": "brief calm confirmation under 8 words", "entries": [{"text": "cleaned and third-person text", "category": "${fixedCategory}"}]}`;
+{"acknowledgment": "brief calm confirmation under 8 words", "entries": [{"text": "cleaned and third-person text", "category": "${fixedCategory}", "tags": ["Tag One"]}]}`;
 }
 
 async function callAnthropicProcess(
@@ -222,7 +223,7 @@ async function callAnthropicProcess(
     },
     body: JSON.stringify({
       model: "claude-sonnet-4-5-20250929",
-      max_tokens: 1200,
+      max_tokens: 1400,
       temperature: 0,
       system,
       messages: [
@@ -261,7 +262,7 @@ async function callAnthropicProcess(
 
 function normalizeModelEntries(parsedModelJson: {
   acknowledgment?: string;
-  entries?: Array<{ text?: string; category?: string }>;
+  entries?: Array<{ text?: string; category?: string; tags?: unknown }>;
 } | null): {
   acknowledgment: string;
   entries: ProcessedEntry[];
@@ -274,6 +275,7 @@ function normalizeModelEntries(parsedModelJson: {
     .map((entry) => ({
       text: entry.text?.trim() ?? "",
       category: sanitizeCategory(entry.category),
+      tags: normalizeTagList(entry.tags),
     }))
     .filter((entry) => entry.text.length > 0);
 
@@ -313,14 +315,13 @@ export async function POST(request: Request) {
 
     const apiKey = process.env.ANTHROPIC_API_KEY;
 
-    const isManual =
-      Boolean(manualCategory && manualCategory !== "auto");
+    const isManual = Boolean(manualCategory && manualCategory !== "auto");
 
     if (isManual && manualCategory) {
       const category = sanitizeCategory(manualCategory);
       if (!apiKey) {
         return NextResponse.json({
-          entries: [{ text: originalText, category }],
+          entries: [{ text: originalText, category, tags: [] }],
         });
       }
 
@@ -333,7 +334,7 @@ export async function POST(request: Request) {
       const { ok, modelText } = await callAnthropicProcess(apiKey, system, originalText);
       if (!ok) {
         return NextResponse.json({
-          entries: [{ text: originalText, category }],
+          entries: [{ text: originalText, category, tags: [] }],
         });
       }
 
@@ -341,14 +342,20 @@ export async function POST(request: Request) {
       const normalized = normalizeModelEntries(parsedModelJson);
       if (!normalized) {
         return NextResponse.json({
-          entries: [{ text: originalText, category }],
+          entries: [{ text: originalText, category, tags: [] }],
         });
       }
 
       const single = normalized.entries[0];
       return NextResponse.json({
         acknowledgment: normalized.acknowledgment,
-        entries: [{ text: single.text, category }],
+        entries: [
+          {
+            text: single.text,
+            category,
+            tags: normalizeTagList(single.tags),
+          },
+        ],
       });
     }
 

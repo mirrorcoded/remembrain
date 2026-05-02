@@ -1,34 +1,15 @@
-/** Matches journal Category union on the home page. */
-export type DefaultCategoryPreference =
-  | "auto"
-  | "health"
-  | "relationships"
-  | "career"
-  | "logistics"
-  | "emotional"
-  | "finance"
-  | "ideas"
-  | "learning"
-  | "reflection"
-  | "other";
+import type { KnownCategory } from "@/lib/categories";
+import { KNOWN_CATEGORIES } from "@/lib/categories";
+
+/** Matches journal category union on the home page. */
+export type DefaultCategoryPreference = "auto" | KnownCategory;
 
 export const PREF_DEFAULT_CATEGORY_KEY = "remembrain_default_category";
 export const PREF_STATS_EXPANDED_KEY = "remembrain_stats_expanded";
 export const LAST_BACKUP_STORAGE_KEY = "remembrain_last_backup";
 export const BACKUP_BANNER_SNOOZE_UNTIL_KEY = "remembrain_backup_banner_snooze_until";
 
-const CATEGORIES = new Set<string>([
-  "health",
-  "relationships",
-  "career",
-  "logistics",
-  "emotional",
-  "finance",
-  "ideas",
-  "learning",
-  "reflection",
-  "other",
-]);
+const CATEGORIES = new Set<string>(KNOWN_CATEGORIES);
 
 function sanitizeCategoryPref(raw: string | null): DefaultCategoryPreference {
   if (!raw || raw === "auto") {
