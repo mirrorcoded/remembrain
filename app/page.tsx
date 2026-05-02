@@ -1816,15 +1816,10 @@ export default function Home() {
     );
   }
 
-  const hideMobileThreadsChrome =
-    isMobileViewport && activeTab === "chat" && chatSidebarOpen;
-
   return (
     <div className="min-h-screen bg-zinc-100 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
       <main className="mx-auto flex w-full max-w-6xl flex-col px-4 pb-10 pt-4 sm:px-6">
-        <header
-          className={`mb-4 flex flex-wrap items-start justify-between gap-4 sm:mb-5 ${hideMobileThreadsChrome ? "max-lg:hidden" : ""}`}
-        >
+        <header className="mb-4 flex flex-wrap items-start justify-between gap-4 sm:mb-5">
           <div className="space-y-1">
             <h1 className="text-2xl font-semibold tracking-tight">Remembrain</h1>
             <p className="text-xs font-normal text-zinc-500 dark:text-zinc-500">
@@ -1856,9 +1851,7 @@ export default function Home() {
           </div>
         </header>
 
-        <div
-          className={`sticky top-0 z-[60] -mx-4 mb-5 border-b border-zinc-200 bg-zinc-100/95 pb-3 pt-2 backdrop-blur-md supports-[backdrop-filter]:bg-zinc-100/85 dark:border-zinc-800 dark:bg-zinc-950/95 dark:supports-[backdrop-filter]:bg-zinc-950/90 sm:-mx-6 sm:mb-6 sm:px-6 sm:pb-4 sm:pt-3 ${hideMobileThreadsChrome ? "max-lg:hidden" : ""}`}
-        >
+        <div className="sticky top-0 z-[60] -mx-4 mb-5 border-b border-zinc-200 bg-zinc-100/95 pb-3 pt-2 backdrop-blur-md supports-[backdrop-filter]:bg-zinc-100/85 dark:border-zinc-800 dark:bg-zinc-950/95 dark:supports-[backdrop-filter]:bg-zinc-950/90 sm:-mx-6 sm:mb-6 sm:px-6 sm:pb-4 sm:pt-3">
           <div className="grid w-full grid-cols-2 gap-2 px-4 sm:gap-3 sm:px-0">
             <button
               type="button"
@@ -2365,18 +2358,17 @@ export default function Home() {
           </>
         ) : (
           <div className="flex w-full min-w-0 flex-col gap-3 lg:min-h-[min(80vh,800px)] lg:flex-row lg:items-stretch lg:gap-4">
+            {/* Right-edge dim strip (~22%): tap to close; tabs/chat peek through underneath */}
             {chatSidebarOpen ? (
               <button
                 type="button"
-                className="fixed inset-0 z-[69] bg-zinc-950/50 lg:hidden"
+                className="fixed inset-y-0 right-0 left-[78vw] z-[69] bg-zinc-950/40 backdrop-blur-[1px] lg:hidden"
                 aria-label="Close menu"
                 onClick={() => setChatSidebarOpen(false)}
               />
             ) : null}
 
-            <div
-              className={`relative z-[55] flex items-center gap-2 lg:z-auto lg:hidden ${hideMobileThreadsChrome ? "hidden" : ""}`}
-            >
+            <div className="relative z-[55] flex items-center gap-2 lg:z-auto lg:hidden">
               <button
                 type="button"
                 onClick={() => setChatSidebarOpen(true)}
@@ -2395,10 +2387,10 @@ export default function Home() {
 
             {/* Slide the whole aside off-screen when closed so the fixed box does not steal taps (inner-only translate left the outer hit region in place). */}
             <aside
-              className={`flex flex-col max-lg:fixed max-lg:inset-0 max-lg:z-[70] max-lg:h-[100dvh] max-lg:w-full max-lg:max-w-none max-lg:transition-transform max-lg:duration-300 max-lg:ease-out ${
+              className={`flex flex-col max-lg:fixed max-lg:left-0 max-lg:top-0 max-lg:bottom-0 max-lg:z-[70] max-lg:h-[100dvh] max-lg:w-[78vw] max-lg:transition-transform max-lg:duration-300 max-lg:ease-out ${
                 chatSidebarOpen ? "max-lg:translate-x-0" : "max-lg:-translate-x-full"
-              } lg:static lg:z-0 lg:h-auto lg:max-h-none lg:w-64 lg:shrink-0 lg:translate-x-0`}
-              aria-hidden={!chatSidebarOpen}
+              } lg:static lg:z-0 lg:h-auto lg:max-h-none lg:w-[300px] lg:shrink-0 lg:translate-x-0`}
+              aria-hidden={isMobileViewport && !chatSidebarOpen}
             >
               <div
                 ref={chatThreadsAsideInnerRef}
@@ -2414,7 +2406,7 @@ export default function Home() {
                     : undefined
                 }
               >
-                {/* Mobile: full-screen panel chrome (main app tabs/header hidden via hideMobileThreadsChrome) */}
+                {/* Mobile: partial overlay panel header */}
                 <div className="grid shrink-0 grid-cols-[minmax(3rem,1fr)_minmax(0,auto)_minmax(3rem,1fr)] items-center gap-2 border-b border-zinc-200 px-2 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] dark:border-zinc-800 lg:hidden">
                   <button
                     type="button"
