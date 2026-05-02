@@ -233,6 +233,7 @@ export default function Home() {
   const [statsExpanded, setStatsExpanded] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [saveInlineStatus, setSaveInlineStatus] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"entries" | "ask">("entries");
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -410,6 +411,8 @@ export default function Home() {
       setEditingText("");
       setEditingCategory("other");
       setSaveNoticeMessage("");
+      setSaveInlineStatus("");
+      setIsSaving(false);
     }
 
     void supabase.auth.getSession().then(({ data: { session: initialSession } }) => {
@@ -744,13 +747,25 @@ export default function Home() {
       return;
     }
 
+    const useAutoCategory = newEntryCategorySelection === "auto";
+
     setIsSaving(true);
     setErrorMessage(null);
     setSaveNoticeMessage("");
+    setSaveInlineStatus(useAutoCategory ? "Got it..." : "Saving...");
+    setText("");
 
     let processedEntries: Array<{ text: string; category: Category }> = [
       { text: trimmedText, category: "other" },
     ];
+
+    function abortSave(restoreText: boolean) {
+      if (restoreText) {
+        setText(trimmedText);
+      }
+      setSaveInlineStatus("");
+      setIsSaving(false);
+    }
 
     try {
       const processResponse = await fetch("/api/process", {
@@ -767,12 +782,15 @@ export default function Home() {
 
       if (processResponse.status === 401) {
         setErrorMessage("Your session expired. Please sign in again.");
-        setIsSaving(false);
+        abortSave(true);
         return;
       }
 
       if (processResponse.ok) {
-        const result = (await processResponse.json()) as { entries?: ProcessApiEntry[] };
+        const result = (await processResponse.json()) as {
+          acknowledgment?: string;
+          entries?: ProcessApiEntry[];
+        };
         const mappedEntries =
           result.entries
             ?.map((entry) => ({
@@ -783,6 +801,14 @@ export default function Home() {
 
         if (mappedEntries.length > 0) {
           processedEntries = mappedEntries;
+        }
+
+        if (useAutoCategory) {
+          const ack =
+            typeof result.acknowledgment === "string" && result.acknowledgment.trim().length > 0
+              ? result.acknowledgment.trim()
+              : "Noted";
+          setSaveInlineStatus(ack);
         }
       }
     } catch {
@@ -798,17 +824,13 @@ export default function Home() {
 
       if (error) {
         setErrorMessage("Could not save entry. Please try again.");
-        setIsSaving(false);
+        abortSave(true);
         return;
       }
     }
 
-    setText("");
+    setSaveInlineStatus("");
     setNewEntryCategorySelection("auto");
-    if (processedEntries.length > 1) {
-      setSaveNoticeMessage(`Entry split into ${processedEntries.length} parts`);
-      setTimeout(() => setSaveNoticeMessage(""), 2500);
-    }
     await loadEntries();
     setIsSaving(false);
   }
@@ -1196,14 +1218,16 @@ export default function Home() {
               value={text}
               onChange={(event) => setText(event.target.value)}
               placeholder="What are you thinking about?"
-              className="min-h-32 w-full resize-y rounded-xl border border-zinc-300 bg-zinc-50 px-3 py-2 pr-14 text-base outline-none transition focus:border-zinc-400 focus:ring-2 focus:ring-zinc-300 dark:border-zinc-700 dark:bg-zinc-950 dark:focus:border-zinc-500 dark:focus:ring-zinc-700"
+              disabled={isSaving}
+              className="min-h-32 w-full resize-y rounded-xl border border-zinc-300 bg-zinc-50 px-3 py-2 pr-14 text-base outline-none transition focus:border-zinc-400 focus:ring-2 focus:ring-zinc-300 disabled:cursor-not-allowed disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-950 dark:focus:border-zinc-500 dark:focus:ring-zinc-700"
             />
             {isMounted && isSpeechSupported ? (
               <button
                 type="button"
                 onClick={isListening ? stopListening : startListening}
+                disabled={isSaving}
                 aria-label={isListening ? "Stop voice input" : "Start voice input"}
-                className={`absolute bottom-3 right-3 inline-flex h-10 min-w-10 items-center justify-center rounded-full px-3 text-xs font-medium transition ${
+                className={`absolute bottom-3 right-3 inline-flex h-10 min-w-10 items-center justify-center rounded-full px-3 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${
                   isListening
                     ? "animate-pulse bg-red-600 text-white hover:bg-red-500"
                     : "bg-zinc-900 text-white hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
@@ -1222,7 +1246,8 @@ export default function Home() {
               <button
                 type="button"
                 onClick={() => setNewEntryCategorySelection("auto")}
-                className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
+                disabled={isSaving}
+                className={`rounded-full px-3 py-1.5 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${
                   newEntryCategorySelection === "auto"
                     ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
                     : "bg-zinc-200 text-zinc-700 hover:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
@@ -1235,7 +1260,8 @@ export default function Home() {
                   key={category}
                   type="button"
                   onClick={() => setNewEntryCategorySelection(category)}
-                  className={`rounded-full px-3 py-1.5 text-xs font-medium capitalize transition ${
+                  disabled={isSaving}
+                  className={`rounded-full px-3 py-1.5 text-xs font-medium capitalize transition disabled:cursor-not-allowed disabled:opacity-50 ${
                     newEntryCategorySelection === category
                       ? CATEGORY_BADGE_STYLES[category]
                       : "bg-zinc-200 text-zinc-700 hover:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
@@ -1246,17 +1272,23 @@ export default function Home() {
               ))}
             </div>
           </div>
-          <button
-            type="submit"
-            className="mt-3 w-full rounded-xl bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-zinc-700 active:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
-            disabled={!text.trim() || isSaving}
-          >
-            {isSaving
-              ? newEntryCategorySelection === "auto"
-                ? "Processing..."
-                : "Saving..."
-              : "Save"}
-          </button>
+          {isSaving ? (
+            <p
+              className="mt-3 w-full rounded-xl border border-transparent px-4 py-2.5 text-center text-sm text-zinc-600 dark:text-zinc-400"
+              role="status"
+              aria-live="polite"
+            >
+              {saveInlineStatus}
+            </p>
+          ) : (
+            <button
+              type="submit"
+              className="mt-3 w-full rounded-xl bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-zinc-700 active:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+              disabled={!text.trim()}
+            >
+              Save
+            </button>
+          )}
         </form>
 
         <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">

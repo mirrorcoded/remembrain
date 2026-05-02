@@ -8,7 +8,7 @@
 -- select id, created_at, user_id from public.entries where user_id is null;
 
 update public.entries
-set user_id = 'YOUR_USER_UUID'::uuid
+set user_id = '0d956b71-9030-4d83-b95b-6262d83fc7f0'::uuid
 where user_id is null;
 
 -- Optional: verify none left NULL

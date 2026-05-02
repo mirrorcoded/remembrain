@@ -28,8 +28,12 @@ function sanitizeCategory(value: string | undefined): string {
   return CATEGORIES.has(normalizedValue) ? normalizedValue : "other";
 }
 
-function fallbackEntries(originalText: string): { entries: ProcessedEntry[] } {
+function fallbackEntries(originalText: string): {
+  acknowledgment: string;
+  entries: ProcessedEntry[];
+} {
   return {
+    acknowledgment: "Noted",
     entries: [
       {
         text: originalText,
@@ -41,6 +45,7 @@ function fallbackEntries(originalText: string): { entries: ProcessedEntry[] } {
 
 /** Strip markdown fences and parse Claude's entries JSON; returns null on failure. */
 function parseEntriesFromModelText(modelText: string): {
+  acknowledgment?: string;
   entries?: Array<{ text?: string; category?: string }>;
 } | null {
   let trimmed = modelText.trim();
@@ -51,6 +56,7 @@ function parseEntriesFromModelText(modelText: string): {
 
   try {
     return JSON.parse(trimmed) as {
+      acknowledgment?: string;
       entries?: Array<{ text?: string; category?: string }>;
     };
   } catch (error) {
@@ -136,8 +142,16 @@ STEP 3 - Categorize each entry. Use these 10 categories:
 - reflection: pattern-noticing about oneself, self-observations, meta-cognitive insights
 - other: ONLY when truly nothing fits
 
+After processing the entry, also generate a brief, natural acknowledgment message that confirms what you're saving. Keep it under 8 words. Examples:
+- 'Saving Dan Bi's birthday'
+- 'Logging your appointment'
+- 'Got it, splitting into 2 entries'
+- 'Noted'
+- 'Saving 3 medication entries'
+Don't be overly chatty or use exclamation marks. Just a calm confirmation.
+
 Return ONLY valid JSON, no markdown:
-{"entries": [{"text": "cleaned text", "category": "category"}]}`,
+{"acknowledgment": "brief calm confirmation under 8 words", "entries": [{"text": "cleaned text", "category": "category"}]}`,
         messages: [
           {
             role: "user",
@@ -189,7 +203,13 @@ Return ONLY valid JSON, no markdown:
       return NextResponse.json(fallbackEntries(originalText));
     }
 
-    return NextResponse.json({ entries: cleanedEntries });
+    const acknowledgmentRaw = parsedModelJson.acknowledgment;
+    const acknowledgment =
+      typeof acknowledgmentRaw === "string" && acknowledgmentRaw.trim().length > 0
+        ? acknowledgmentRaw.trim().slice(0, 120)
+        : "Noted";
+
+    return NextResponse.json({ acknowledgment, entries: cleanedEntries });
   } catch (error) {
     console.error("[process] unexpected error:", error);
     return NextResponse.json(fallbackEntries(originalText));
