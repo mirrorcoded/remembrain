@@ -2283,7 +2283,16 @@ export default function Home() {
           {speechErrorMessage ? (
             <p className="mt-2 text-sm text-red-700 dark:text-red-300">{speechErrorMessage}</p>
           ) : null}
-          <div className="mt-3 space-y-2">
+          <button
+            type="submit"
+            className="mt-4 w-full min-h-12 scroll-mt-4 rounded-xl bg-zinc-900 px-4 py-3 text-base font-semibold text-white transition hover:bg-zinc-700 active:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+            disabled={!text.trim() || isSaving}
+            aria-busy={isSaving}
+            aria-live="polite"
+          >
+            {isSaving ? saveInlineStatus || "Saving..." : "Save"}
+          </button>
+          <div className="mt-6 space-y-2 border-t border-zinc-200 pt-5 dark:border-zinc-800">
             <p className="text-sm font-medium">Category</p>
             <div className="flex flex-wrap gap-2">
               <button
@@ -2315,23 +2324,6 @@ export default function Home() {
               ))}
             </div>
           </div>
-          {isSaving ? (
-            <p
-              className="mt-3 w-full rounded-xl border border-transparent px-4 py-2.5 text-center text-sm text-zinc-600 dark:text-zinc-400"
-              role="status"
-              aria-live="polite"
-            >
-              {saveInlineStatus}
-            </p>
-          ) : (
-            <button
-              type="submit"
-              className="mt-3 w-full rounded-xl bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-zinc-700 active:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
-              disabled={!text.trim()}
-            >
-              Save
-            </button>
-          )}
         </form>
 
         <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
