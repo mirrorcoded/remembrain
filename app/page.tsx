@@ -135,6 +135,61 @@ function formatLocalYmd(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
+function startOfLocalDay(d: Date): Date {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  return x;
+}
+
+/** Labels for Saved Entries date separators (local calendar). */
+function formatEntryDateGroupLabel(iso: string, referenceNow: Date): string {
+  const entryDate = new Date(iso);
+  const startEntry = startOfLocalDay(entryDate);
+  const startToday = startOfLocalDay(referenceNow);
+  const diffDays = Math.round(
+    (startToday.getTime() - startEntry.getTime()) / (24 * 60 * 60 * 1000),
+  );
+
+  if (diffDays === 0) {
+    return "Today";
+  }
+  if (diffDays === 1) {
+    return "Yesterday";
+  }
+  if (diffDays >= 2 && diffDays <= 6) {
+    return new Intl.DateTimeFormat("en-US", { weekday: "long" }).format(entryDate);
+  }
+  return new Intl.DateTimeFormat("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  }).format(entryDate);
+}
+
+type EntryDateGroup = {
+  dateKey: string;
+  label: string;
+  entries: Entry[];
+};
+
+function groupFilteredEntriesByLocalDate(
+  entries: Entry[],
+  referenceNow: Date,
+): EntryDateGroup[] {
+  const groups: EntryDateGroup[] = [];
+  for (const entry of entries) {
+    const dateKey = formatLocalYmd(startOfLocalDay(new Date(entry.created_at)));
+    const label = formatEntryDateGroupLabel(entry.created_at, referenceNow);
+    const last = groups[groups.length - 1];
+    if (last && last.dateKey === dateKey) {
+      last.entries.push(entry);
+    } else {
+      groups.push({ dateKey, label, entries: [entry] });
+    }
+  }
+  return groups;
+}
+
 const CATEGORY_ORDER: Category[] = [
   "health",
   "relationships",
@@ -367,6 +422,11 @@ export default function Home() {
       return matchesSearch && matchesCategory;
     });
   }, [entries, searchQuery, activeCategory]);
+
+  const groupedFilteredEntries = useMemo(
+    () => groupFilteredEntriesByLocalDate(filteredEntries, new Date(clockTickMs)),
+    [filteredEntries, clockTickMs],
+  );
 
   const isFilterActive = searchQuery.trim().length > 0 || activeCategory !== "all";
 
@@ -1835,12 +1895,27 @@ export default function Home() {
                   No entries match your search.
                 </p>
               ) : (
-                <ul className="space-y-3">
-                  {filteredEntries.map((entry) => (
-                    <li
-                      key={entry.id}
-                      className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
+                <div className="space-y-5">
+                  {groupedFilteredEntries.map((group) => (
+                    <div
+                      key={group.dateKey}
+                      className="space-y-3"
+                      role="group"
+                      aria-label={`Journal entries, ${group.label}`}
                     >
+                      <div className="flex items-center gap-2 sm:gap-3">
+                        <span className="h-px min-w-[0.75rem] flex-1 bg-zinc-200 dark:bg-zinc-700" aria-hidden />
+                        <span className="shrink-0 max-w-[85%] px-1 text-center text-[11px] font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+                          {group.label}
+                        </span>
+                        <span className="h-px min-w-[0.75rem] flex-1 bg-zinc-200 dark:bg-zinc-700" aria-hidden />
+                      </div>
+                      <ul className="space-y-3">
+                        {group.entries.map((entry) => (
+                          <li
+                            key={entry.id}
+                            className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
+                          >
                       <div className="flex items-start justify-between gap-3">
                         <p className="text-xs text-zinc-500 dark:text-zinc-400">
                           {formatTimestamp(entry.created_at)}
@@ -1920,9 +1995,12 @@ export default function Home() {
                           {entry.text}
                         </p>
                       )}
-                    </li>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
                   ))}
-                </ul>
+                </div>
               )}
             </>
           )}
