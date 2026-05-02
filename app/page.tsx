@@ -243,7 +243,9 @@ export default function Home() {
   const [authHydrated, setAuthHydrated] = useState(false);
   const [authEmail, setAuthEmail] = useState("");
   const [authPassword, setAuthPassword] = useState("");
+  const [authConfirmPassword, setAuthConfirmPassword] = useState("");
   const [authMode, setAuthMode] = useState<"signIn" | "signUp">("signIn");
+  const [authView, setAuthView] = useState<"credentials" | "forgotPassword">("credentials");
   const [authError, setAuthError] = useState<string | null>(null);
   const [authNotice, setAuthNotice] = useState<string | null>(null);
   const [authBusy, setAuthBusy] = useState(false);
@@ -575,6 +577,10 @@ export default function Home() {
     setAuthBusy(false);
   }
 
+  function clearPasswordMismatchIfNeeded() {
+    setAuthError((previous) => (previous === "Passwords don't match" ? null : previous));
+  }
+
   async function handleAuthSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setAuthError(null);
@@ -585,6 +591,13 @@ export default function Home() {
     if (!email || !password) {
       setAuthError("Enter email and password.");
       return;
+    }
+
+    if (authMode === "signUp") {
+      if (password !== authConfirmPassword) {
+        setAuthError("Passwords don't match");
+        return;
+      }
     }
 
     setAuthBusy(true);
@@ -598,6 +611,7 @@ export default function Home() {
         if (data.user && !data.session) {
           setAuthNotice("Check your email to confirm your account, then sign in.");
         }
+        setAuthConfirmPassword("");
         return;
       }
 
@@ -605,6 +619,33 @@ export default function Home() {
       if (error) {
         setAuthError(error.message);
       }
+    } finally {
+      setAuthBusy(false);
+    }
+  }
+
+  async function handleForgotPasswordSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setAuthError(null);
+    setAuthNotice(null);
+
+    const email = authEmail.trim();
+    if (!email) {
+      setAuthError("Enter your email address.");
+      return;
+    }
+
+    setAuthBusy(true);
+    try {
+      const redirectTo = `${window.location.origin}/auth/reset-password`;
+      const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
+      if (error) {
+        setAuthError(error.message);
+        return;
+      }
+      setAuthNotice(
+        "If an account exists for that email, a password reset link has been sent. Check your inbox.",
+      );
     } finally {
       setAuthBusy(false);
     }
@@ -1069,73 +1110,168 @@ export default function Home() {
   }
 
   if (!session) {
+    const authInputClass =
+      "mt-1 w-full min-h-11 rounded-xl border border-zinc-300 bg-zinc-50 px-3 py-2 text-base outline-none transition focus:border-zinc-400 focus:ring-2 focus:ring-zinc-300 dark:border-zinc-700 dark:bg-zinc-950 dark:focus:border-zinc-500 dark:focus:ring-zinc-700";
+
     return (
       <div className="min-h-screen bg-zinc-100 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
-        <main className="mx-auto flex w-full max-w-md flex-col gap-6 px-4 py-16 sm:px-6">
+        <main className="mx-auto flex w-full max-w-md flex-col gap-6 px-4 py-12 sm:px-6 sm:py-16">
           <header className="space-y-1 text-center">
             <h1 className="text-2xl font-semibold tracking-tight">Remembrain</h1>
             <p className="text-sm text-zinc-600 dark:text-zinc-400">
-              Sign in to access your journal.
+              {authView === "forgotPassword"
+                ? "Enter your email and we’ll send a reset link."
+                : "Sign in to access your journal."}
             </p>
           </header>
 
-          <form
-            onSubmit={(event) => void handleAuthSubmit(event)}
-            className="space-y-4 rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
-          >
-            <label className="block text-sm font-medium">
-              Email
-              <input
-                type="email"
-                autoComplete="email"
-                value={authEmail}
-                onChange={(event) => setAuthEmail(event.target.value)}
-                className="mt-1 w-full rounded-xl border border-zinc-300 bg-zinc-50 px-3 py-2 text-base outline-none transition focus:border-zinc-400 focus:ring-2 focus:ring-zinc-300 dark:border-zinc-700 dark:bg-zinc-950 dark:focus:border-zinc-500 dark:focus:ring-zinc-700"
-                required
-              />
-            </label>
-            <label className="block text-sm font-medium">
-              Password
-              <input
-                type="password"
-                autoComplete={authMode === "signUp" ? "new-password" : "current-password"}
-                value={authPassword}
-                onChange={(event) => setAuthPassword(event.target.value)}
-                className="mt-1 w-full rounded-xl border border-zinc-300 bg-zinc-50 px-3 py-2 text-base outline-none transition focus:border-zinc-400 focus:ring-2 focus:ring-zinc-300 dark:border-zinc-700 dark:bg-zinc-950 dark:focus:border-zinc-500 dark:focus:ring-zinc-700"
-                required
-              />
-            </label>
-
-            {authError ? (
-              <p className="text-sm text-red-700 dark:text-red-300">{authError}</p>
-            ) : null}
-            {authNotice ? (
-              <p className="text-sm text-emerald-800 dark:text-emerald-200">{authNotice}</p>
-            ) : null}
-
-            <button
-              type="submit"
-              disabled={authBusy}
-              className="w-full rounded-xl bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+          {authView === "forgotPassword" ? (
+            <form
+              onSubmit={(event) => void handleForgotPasswordSubmit(event)}
+              className="space-y-4 rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
             >
-              {authBusy ? "Please wait…" : authMode === "signUp" ? "Create account" : "Sign in"}
-            </button>
+              <label className="block text-sm font-medium">
+                Email
+                <input
+                  type="email"
+                  name="email"
+                  autoComplete="email"
+                  inputMode="email"
+                  value={authEmail}
+                  onChange={(event) => setAuthEmail(event.target.value)}
+                  className={authInputClass}
+                  required
+                />
+              </label>
 
-            <p className="text-center text-sm text-zinc-600 dark:text-zinc-400">
-              {authMode === "signUp" ? "Already have an account?" : "Need an account?"}{" "}
+              {authError ? (
+                <p className="text-sm text-red-700 dark:text-red-300">{authError}</p>
+              ) : null}
+              {authNotice ? (
+                <p className="text-sm text-emerald-800 dark:text-emerald-200">{authNotice}</p>
+              ) : null}
+
               <button
-                type="button"
-                className="font-medium text-zinc-900 underline underline-offset-2 dark:text-zinc-100"
-                onClick={() => {
-                  setAuthMode((mode) => (mode === "signUp" ? "signIn" : "signUp"));
-                  setAuthError(null);
-                  setAuthNotice(null);
-                }}
+                type="submit"
+                disabled={authBusy}
+                className="w-full min-h-11 rounded-xl bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
               >
-                {authMode === "signUp" ? "Sign in" : "Sign up"}
+                {authBusy ? "Please wait…" : "Send reset email"}
               </button>
-            </p>
-          </form>
+
+              <p className="text-center text-sm">
+                <button
+                  type="button"
+                  className="font-medium text-zinc-900 underline underline-offset-2 dark:text-zinc-100"
+                  onClick={() => {
+                    setAuthView("credentials");
+                    setAuthError(null);
+                    setAuthNotice(null);
+                  }}
+                >
+                  Back to sign in
+                </button>
+              </p>
+            </form>
+          ) : (
+            <form
+              onSubmit={(event) => void handleAuthSubmit(event)}
+              className="space-y-4 rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
+            >
+              <label className="block text-sm font-medium">
+                Email
+                <input
+                  type="email"
+                  name="email"
+                  autoComplete="email"
+                  inputMode="email"
+                  value={authEmail}
+                  onChange={(event) => setAuthEmail(event.target.value)}
+                  className={authInputClass}
+                  required
+                />
+              </label>
+              <label className="block text-sm font-medium">
+                Password
+                <input
+                  type="password"
+                  name="password"
+                  autoComplete={authMode === "signUp" ? "new-password" : "current-password"}
+                  value={authPassword}
+                  onChange={(event) => {
+                    setAuthPassword(event.target.value);
+                    clearPasswordMismatchIfNeeded();
+                  }}
+                  className={authInputClass}
+                  required
+                />
+              </label>
+              {authMode === "signUp" ? (
+                <label className="block text-sm font-medium">
+                  Confirm password
+                  <input
+                    type="password"
+                    name="confirmPassword"
+                    autoComplete="new-password"
+                    value={authConfirmPassword}
+                    onChange={(event) => {
+                      setAuthConfirmPassword(event.target.value);
+                      clearPasswordMismatchIfNeeded();
+                    }}
+                    className={authInputClass}
+                    required
+                  />
+                </label>
+              ) : null}
+
+              {authError ? (
+                <p className="text-sm text-red-700 dark:text-red-300">{authError}</p>
+              ) : null}
+              {authNotice ? (
+                <p className="text-sm text-emerald-800 dark:text-emerald-200">{authNotice}</p>
+              ) : null}
+
+              <button
+                type="submit"
+                disabled={authBusy}
+                className="w-full min-h-11 rounded-xl bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+              >
+                {authBusy ? "Please wait…" : authMode === "signUp" ? "Create account" : "Sign in"}
+              </button>
+
+              {authMode === "signIn" ? (
+                <p className="text-center text-sm">
+                  <button
+                    type="button"
+                    className="text-zinc-600 underline-offset-2 hover:text-zinc-900 hover:underline dark:text-zinc-400 dark:hover:text-zinc-100"
+                    onClick={() => {
+                      setAuthView("forgotPassword");
+                      setAuthError(null);
+                      setAuthNotice(null);
+                    }}
+                  >
+                    Forgot password?
+                  </button>
+                </p>
+              ) : null}
+
+              <p className="text-center text-sm text-zinc-600 dark:text-zinc-400">
+                {authMode === "signUp" ? "Already have an account?" : "Need an account?"}{" "}
+                <button
+                  type="button"
+                  className="font-medium text-zinc-900 underline underline-offset-2 dark:text-zinc-100"
+                  onClick={() => {
+                    setAuthMode((mode) => (mode === "signUp" ? "signIn" : "signUp"));
+                    setAuthError(null);
+                    setAuthNotice(null);
+                    setAuthConfirmPassword("");
+                  }}
+                >
+                  {authMode === "signUp" ? "Sign in" : "Sign up"}
+                </button>
+              </p>
+            </form>
+          )}
         </main>
       </div>
     );
