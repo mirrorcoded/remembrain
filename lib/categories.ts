@@ -130,6 +130,17 @@ export function entryMatchesKnownCategoryFilter(
 }
 
 export function normalizeTagList(raw: unknown, maxTags = 5): string[] {
+  /** Claude sometimes returns a single tag string instead of string[]. */
+  if (typeof raw === "string") {
+    const t = raw.trim();
+    if (!t) {
+      return [];
+    }
+    const parts = t.includes(",")
+      ? t.split(",").map((s) => s.trim()).filter(Boolean)
+      : [t];
+    return normalizeTagList(parts, maxTags);
+  }
   if (!Array.isArray(raw)) {
     return [];
   }

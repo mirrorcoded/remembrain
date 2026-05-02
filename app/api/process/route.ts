@@ -11,6 +11,12 @@ import {
 } from "@/lib/user-profile";
 import { NextResponse } from "next/server";
 
+function debugProcess(...args: unknown[]) {
+  if (process.env.NODE_ENV === "development" || process.env.REMEMBRAIN_DEBUG_PROCESS === "1") {
+    console.log("[process]", ...args);
+  }
+}
+
 type ProcessedEntry = {
   text: string;
   category: KnownCategory;
@@ -49,10 +55,19 @@ function parseEntriesFromModelText(modelText: string): {
   }
 
   try {
-    return JSON.parse(trimmed) as {
+    const parsed = JSON.parse(trimmed) as {
       acknowledgment?: string;
       entries?: Array<{ text?: string; category?: string; tags?: unknown }>;
     };
+    debugProcess(
+      "Parsed JSON entries (raw tags field per row):",
+      parsed.entries?.map((e, i) => ({
+        index: i,
+        tags: e.tags,
+        tagsType: e.tags === undefined ? "missing" : typeof e.tags,
+      })),
+    );
+    return parsed;
   } catch (error) {
     console.error(
       "[process] malformed JSON from Claude:",
@@ -122,13 +137,15 @@ Guardrails:
 }
 
 const TAG_EXTRACTION_BLOCK = `TAGS (for EACH entry in the entries array):
-Also extract relevant tags from that entry's content. Tags should be:
-- Names of specific people mentioned (e.g. Dan Bi, mom, Eugene Park)
-- Specific topics or things (e.g. Abilify, NYU, Cozyberry, bipolar)
-- Use consistent capitalization as in the entry when reasonable (e.g. Dan Bi not danbi)
-- Don't tag generic concepts if you can tag a specific person or thing instead (don't tag "family" if you can tag the specific family member)
+Extract tags from that entry's FINAL third-person text (after STEP 4). Tags must be a JSON array of strings, e.g. "tags": ["Dan Bi", "biking"] — never a single string, never omit the key.
+
+Include when applicable:
+- Names of specific people (e.g. Dan Bi, Eugene Park) — if a person is named, include their name in tags; do NOT leave tags empty just because the sentence is short.
+- Specific topics or things (e.g. Abilify, NYU, biking)
+- Use consistent capitalization as in the entry (Dan Bi not danbi)
+- Don't tag generic concepts if you can tag a specific person or thing instead
 - Limit to 5 tags max per entry
-- Use an empty array [] if the entry is too short or generic to need tags
+- Only use [] when there are truly no people, places, medications, or concrete topics to tag
 
 Return tags in the JSON as shown below.`;
 
@@ -257,6 +274,8 @@ async function callAnthropicProcess(
 
   const modelText =
     parsedApiResponse.content?.find((block) => block.type === "text")?.text ?? "";
+  debugProcess("Claude assistant message text length:", modelText.length);
+  debugProcess("Claude raw output (first 2000 chars):\n", modelText.slice(0, 2000));
   return { ok: true, modelText };
 }
 
@@ -278,6 +297,11 @@ function normalizeModelEntries(parsedModelJson: {
       tags: normalizeTagList(entry.tags),
     }))
     .filter((entry) => entry.text.length > 0);
+
+  debugProcess(
+    "Normalized entries after sanitize + normalizeTagList:",
+    cleanedEntries.map((e) => ({ category: e.category, tags: e.tags })),
+  );
 
   if (cleanedEntries.length === 0) {
     return null;
@@ -341,19 +365,22 @@ export async function POST(request: Request) {
       const parsedModelJson = parseEntriesFromModelText(modelText);
       const normalized = normalizeModelEntries(parsedModelJson);
       if (!normalized) {
+        debugProcess("Manual mode: normalizeModelEntries null, falling back");
         return NextResponse.json({
           entries: [{ text: originalText, category, tags: [] }],
         });
       }
 
       const single = normalized.entries[0];
+      const tagsOut = normalizeTagList(single.tags);
+      debugProcess("Manual mode single entry tags:", tagsOut);
       return NextResponse.json({
         acknowledgment: normalized.acknowledgment,
         entries: [
           {
             text: single.text,
             category,
-            tags: normalizeTagList(single.tags),
+            tags: tagsOut,
           },
         ],
       });
@@ -364,17 +391,21 @@ export async function POST(request: Request) {
     }
 
     const system = buildAutoSystemPrompt(userName, pronounsLine, examplePossessive);
+    debugProcess("Auto mode, input length:", originalText.length);
     const { ok, modelText } = await callAnthropicProcess(apiKey, system, originalText);
     if (!ok) {
+      debugProcess("Anthropic request failed or empty body");
       return NextResponse.json(fallbackEntries(originalText));
     }
 
     const parsedModelJson = parseEntriesFromModelText(modelText);
     const normalized = normalizeModelEntries(parsedModelJson);
     if (!normalized) {
+      debugProcess("normalizeModelEntries returned null (parse failed or empty entries)");
       return NextResponse.json(fallbackEntries(originalText));
     }
 
+    debugProcess("Response payload entries tags:", normalized.entries.map((e) => e.tags));
     return NextResponse.json({
       acknowledgment: normalized.acknowledgment,
       entries: normalized.entries,

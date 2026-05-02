@@ -1787,6 +1787,13 @@ export default function Home() {
           processedEntries = mappedEntries;
         }
 
+        if (process.env.NODE_ENV === "development") {
+          console.log(
+            "[entries save] /api/process result → processedEntries",
+            processedEntries.map((e) => ({ category: e.category, tags: e.tags })),
+          );
+        }
+
         if (useAutoCategory) {
           const ack =
             typeof result.acknowledgment === "string" && result.acknowledgment.trim().length > 0
@@ -1804,6 +1811,13 @@ export default function Home() {
     }
 
     for (const entry of processedEntries) {
+      if (process.env.NODE_ENV === "development") {
+        console.log("[entries save] Supabase insert payload:", {
+          category: entry.category,
+          tags: entry.tags,
+          textPreview: entry.text.slice(0, 80),
+        });
+      }
       let error =
         (
           await supabase.from("entries").insert({
