@@ -355,6 +355,8 @@ export default function Home() {
   });
   const [pressingEntryId, setPressingEntryId] = useState<number | null>(null);
   const suppressNextEntryRowClickRef = useRef(false);
+  /** Once true in the current select-mode session, auto-exit when selection becomes empty. */
+  const bulkSelectHadSelectionRef = useRef(false);
 
   const statsCategoryRows = useMemo(() => {
     const counts: Record<Category, number> = {
@@ -533,6 +535,21 @@ export default function Home() {
   }, [activeTab, isMounted]);
 
   useEffect(() => {
+    if (!entriesSelectMode) {
+      return;
+    }
+    if (selectedEntryIds.size > 0) {
+      bulkSelectHadSelectionRef.current = true;
+      return;
+    }
+    if (bulkSelectHadSelectionRef.current) {
+      bulkSelectHadSelectionRef.current = false;
+      suppressNextEntryRowClickRef.current = false;
+      setEntriesSelectMode(false);
+    }
+  }, [entriesSelectMode, selectedEntryIds]);
+
+  useEffect(() => {
     function resetForSignedOut() {
       setEntries([]);
       setChatThreads([]);
@@ -548,6 +565,8 @@ export default function Home() {
       setSaveNoticeMessage("");
       setSaveInlineStatus("");
       setIsSaving(false);
+      bulkSelectHadSelectionRef.current = false;
+      suppressNextEntryRowClickRef.current = false;
       setEntriesSelectMode(false);
       setSelectedEntryIds(new Set());
     }
@@ -949,6 +968,7 @@ export default function Home() {
   function handleTabChange(tab: "entries" | "chat") {
     if (tab !== "entries") {
       suppressNextEntryRowClickRef.current = false;
+      bulkSelectHadSelectionRef.current = false;
       setEntriesSelectMode(false);
       setSelectedEntryIds(new Set());
     }
@@ -961,10 +981,12 @@ export default function Home() {
       setEditingText("");
       setEditingCategory("other");
       setIsUpdatingEntry(false);
+      bulkSelectHadSelectionRef.current = false;
       setEntriesSelectMode(true);
       return;
     }
     suppressNextEntryRowClickRef.current = false;
+    bulkSelectHadSelectionRef.current = false;
     setSelectedEntryIds(new Set());
     setEntriesSelectMode(false);
   }
@@ -1000,6 +1022,7 @@ export default function Home() {
       return;
     }
     suppressNextEntryRowClickRef.current = false;
+    bulkSelectHadSelectionRef.current = false;
     setSelectedEntryIds(new Set());
     setEntriesSelectMode(false);
     await loadEntries();
@@ -1933,27 +1956,13 @@ export default function Home() {
                   <label htmlFor="entry-search" className="block text-sm font-medium">
                     Search Entries
                   </label>
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setIsExportModalOpen(true)}
-                      className="rounded-lg border border-zinc-300 bg-zinc-50 px-3 py-1.5 text-xs font-medium transition hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-950 dark:hover:bg-zinc-900"
-                    >
-                      Export
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleToggleEntriesSelectMode}
-                      disabled={entries.length === 0}
-                      className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-950 dark:hover:bg-zinc-900 ${
-                        entriesSelectMode
-                          ? "border-zinc-900 bg-zinc-900 text-white dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-900"
-                          : "border-zinc-300 bg-zinc-50 hover:bg-zinc-100"
-                      }`}
-                    >
-                      {entriesSelectMode ? "Cancel" : "Select"}
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsExportModalOpen(true)}
+                    className="rounded-lg border border-zinc-300 bg-zinc-50 px-3 py-1.5 text-xs font-medium transition hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-950 dark:hover:bg-zinc-900"
+                  >
+                    Export
+                  </button>
                 </div>
                 <input
                   id="entry-search"
@@ -1993,6 +2002,21 @@ export default function Home() {
                 <p className="text-sm text-zinc-600 dark:text-zinc-400">
                   Showing {filteredEntries.length} of {entries.length} entries
                 </p>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={handleToggleEntriesSelectMode}
+                  disabled={entries.length === 0}
+                  className={`min-h-10 shrink-0 rounded-xl border-2 px-4 py-2 text-sm font-semibold shadow-sm transition disabled:cursor-not-allowed disabled:opacity-50 dark:shadow-none ${
+                    entriesSelectMode
+                      ? "border-zinc-900 bg-zinc-900 text-white dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-900"
+                      : "border-zinc-800 bg-white text-zinc-900 hover:bg-zinc-50 dark:border-zinc-300 dark:bg-zinc-950 dark:text-zinc-100 dark:hover:bg-zinc-900"
+                  }`}
+                >
+                  {entriesSelectMode ? "Cancel" : "Select"}
+                </button>
               </div>
 
               {entriesSelectMode && filteredEntries.length > 0 ? (

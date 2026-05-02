@@ -2,6 +2,8 @@ import { createServerClient } from "@supabase/ssr";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 
+import { shouldClearSupabaseSession } from "@/lib/supabase/auth-errors";
+
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
@@ -37,12 +39,33 @@ export async function getAuthenticatedSupabase(): Promise<
   { supabase: SupabaseClient; user: User } | { supabase: null; user: null }
 > {
   const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser();
-  if (error || !user) {
+  try {
+    const {
+      data: { user },
+      error,
+    } = await supabase.auth.getUser();
+    if (error) {
+      if (shouldClearSupabaseSession(error)) {
+        try {
+          await supabase.auth.signOut({ scope: "local" });
+        } catch {
+          // ignore
+        }
+      }
+      return { supabase: null, user: null };
+    }
+    if (!user) {
+      return { supabase: null, user: null };
+    }
+    return { supabase, user };
+  } catch (error) {
+    if (shouldClearSupabaseSession(error)) {
+      try {
+        await supabase.auth.signOut({ scope: "local" });
+      } catch {
+        // ignore
+      }
+    }
     return { supabase: null, user: null };
   }
-  return { supabase, user };
 }

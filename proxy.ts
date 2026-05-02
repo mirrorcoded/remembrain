@@ -1,6 +1,8 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
+import { shouldClearSupabaseSession } from "@/lib/supabase/auth-errors";
+
 export async function proxy(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
 
@@ -29,7 +31,22 @@ export async function proxy(request: NextRequest) {
     },
   });
 
-  await supabase.auth.getUser();
+  try {
+    const { error } = await supabase.auth.getUser();
+    if (error && shouldClearSupabaseSession(error)) {
+      await supabase.auth.signOut({ scope: "local" });
+    }
+  } catch (error) {
+    if (shouldClearSupabaseSession(error)) {
+      try {
+        await supabase.auth.signOut({ scope: "local" });
+      } catch {
+        // ignore — still return a normal response so the page can render (login UI)
+      }
+    } else {
+      console.error("[proxy] supabase.auth.getUser failed:", error);
+    }
+  }
 
   return supabaseResponse;
 }
