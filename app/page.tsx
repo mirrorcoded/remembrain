@@ -17,6 +17,7 @@ import {
   readStatsExpandedPreference,
 } from "@/lib/remembrain-preferences";
 import { supabase } from "@/lib/supabase";
+import { greetingLineForUser } from "@/lib/user-profile";
 
 type Category =
   | "health"
@@ -456,6 +457,13 @@ export default function Home() {
     () => groupFilteredEntriesByLocalDate(filteredEntries, new Date(clockTickMs)),
     [filteredEntries, clockTickMs],
   );
+
+  const greetingLine = useMemo(() => {
+    if (!session?.user) {
+      return "Welcome";
+    }
+    return greetingLineForUser(session.user);
+  }, [session]);
 
   const isFilterActive = searchQuery.trim().length > 0 || activeCategory !== "all";
 
@@ -1819,6 +1827,9 @@ export default function Home() {
         >
           <div className="space-y-1">
             <h1 className="text-2xl font-semibold tracking-tight">Remembrain</h1>
+            <p className="text-xs font-normal text-zinc-500 dark:text-zinc-500">
+              {greetingLine}
+            </p>
             <p className="text-sm text-zinc-600 dark:text-zinc-400">
               Capture your thoughts and keep your memories close.
             </p>

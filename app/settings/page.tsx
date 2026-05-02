@@ -10,6 +10,10 @@ import {
   writeStatsExpandedPreference,
   type DefaultCategoryPreference,
 } from "@/lib/remembrain-preferences";
+import {
+  type PronounsPreset,
+  pronounsStateFromMetadata,
+} from "@/lib/user-profile";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useState } from "react";
@@ -41,9 +45,13 @@ export default function SettingsPage() {
   const [ready, setReady] = useState(false);
   const [email, setEmail] = useState("");
   const [displayName, setDisplayName] = useState("");
-  const [displayNameBusy, setDisplayNameBusy] = useState(false);
-  const [displayNameNotice, setDisplayNameNotice] = useState<string | null>(null);
-  const [displayNameError, setDisplayNameError] = useState<string | null>(null);
+  const [pronounsPreset, setPronounsPreset] = useState<PronounsPreset>("they_them");
+  const [pronounsSubject, setPronounsSubject] = useState("");
+  const [pronounsObject, setPronounsObject] = useState("");
+  const [pronounsPossessive, setPronounsPossessive] = useState("");
+  const [profileBusy, setProfileBusy] = useState(false);
+  const [profileNotice, setProfileNotice] = useState<string | null>(null);
+  const [profileError, setProfileError] = useState<string | null>(null);
 
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -92,8 +100,13 @@ export default function SettingsPage() {
         return;
       }
       setEmail(session.user.email ?? "");
-      const meta = session.user.user_metadata as { display_name?: string } | undefined;
+      const meta = session.user.user_metadata as Record<string, unknown> | undefined;
       setDisplayName(typeof meta?.display_name === "string" ? meta.display_name : "");
+      const ps = pronounsStateFromMetadata(meta);
+      setPronounsPreset(ps.preset);
+      setPronounsSubject(ps.subject);
+      setPronounsObject(ps.object);
+      setPronounsPossessive(ps.possessive);
       setReady(true);
       refreshLocalBackupLabel();
       setDefaultCategory(readDefaultCategoryPreference());
@@ -111,23 +124,41 @@ export default function SettingsPage() {
     };
   }, [router, refreshLocalBackupLabel]);
 
-  async function handleSaveDisplayName(event: FormEvent<HTMLFormElement>) {
+  async function handleSaveProfile(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setDisplayNameError(null);
-    setDisplayNameNotice(null);
-    setDisplayNameBusy(true);
-    try {
-      const { error } = await supabase.auth.updateUser({
-        data: { display_name: displayName.trim() || undefined },
-      });
-      if (error) {
-        setDisplayNameError(error.message);
+    setProfileError(null);
+    setProfileNotice(null);
+    if (pronounsPreset === "custom") {
+      const s = pronounsSubject.trim();
+      const o = pronounsObject.trim();
+      const p = pronounsPossessive.trim();
+      if (!s || !o || !p) {
+        setProfileError("Enter subject, object, and possessive pronouns for Custom.");
         return;
       }
-      setDisplayNameNotice("Saved.");
-      setTimeout(() => setDisplayNameNotice(null), 3000);
+    }
+    setProfileBusy(true);
+    try {
+      const { error } = await supabase.auth.updateUser({
+        data: {
+          display_name: displayName.trim() || undefined,
+          pronouns_preset: pronounsPreset,
+          pronouns_subject:
+            pronounsPreset === "custom" ? pronounsSubject.trim() : undefined,
+          pronouns_object:
+            pronounsPreset === "custom" ? pronounsObject.trim() : undefined,
+          pronouns_possessive:
+            pronounsPreset === "custom" ? pronounsPossessive.trim() : undefined,
+        },
+      });
+      if (error) {
+        setProfileError(error.message);
+        return;
+      }
+      setProfileNotice("Saved.");
+      setTimeout(() => setProfileNotice(null), 3000);
     } finally {
-      setDisplayNameBusy(false);
+      setProfileBusy(false);
     }
   }
 
@@ -329,7 +360,7 @@ export default function SettingsPage() {
             <p className="mt-1 text-xs text-zinc-500">Your sign-in identifier (read-only).</p>
           </div>
 
-          <form onSubmit={(e) => void handleSaveDisplayName(e)} className="space-y-2">
+          <form onSubmit={(e) => void handleSaveProfile(e)} className="space-y-4">
             <label className="block text-sm font-medium">
               Display name
               <input
@@ -338,21 +369,81 @@ export default function SettingsPage() {
                 onChange={(e) => setDisplayName(e.target.value)}
                 className={inputClass}
                 autoComplete="nickname"
-                placeholder="Optional"
+                placeholder="Optional — e.g. Eric Bae"
               />
             </label>
-            {displayNameError ? (
-              <p className="text-sm text-red-700 dark:text-red-300">{displayNameError}</p>
+
+            <div className="space-y-2">
+              <label className="block text-sm font-medium" htmlFor="pronouns-preset">
+                Pronouns
+              </label>
+              <select
+                id="pronouns-preset"
+                value={pronounsPreset}
+                onChange={(e) => setPronounsPreset(e.target.value as PronounsPreset)}
+                className={inputClass}
+              >
+                <option value="he_him">He/him/his</option>
+                <option value="she_her">She/her/hers</option>
+                <option value="they_them">They/them/theirs</option>
+                <option value="custom">Custom</option>
+              </select>
+              <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                Used when saving entries in third person. Pronoun changes apply to new entries only;
+                existing entries are preserved as-is.
+              </p>
+            </div>
+
+            {pronounsPreset === "custom" ? (
+              <div className="grid gap-3 sm:grid-cols-3">
+                <label className="block text-sm font-medium">
+                  Subject
+                  <input
+                    type="text"
+                    value={pronounsSubject}
+                    onChange={(e) => setPronounsSubject(e.target.value)}
+                    className={inputClass}
+                    placeholder="e.g. they"
+                    autoComplete="off"
+                  />
+                </label>
+                <label className="block text-sm font-medium">
+                  Object
+                  <input
+                    type="text"
+                    value={pronounsObject}
+                    onChange={(e) => setPronounsObject(e.target.value)}
+                    className={inputClass}
+                    placeholder="e.g. them"
+                    autoComplete="off"
+                  />
+                </label>
+                <label className="block text-sm font-medium">
+                  Possessive
+                  <input
+                    type="text"
+                    value={pronounsPossessive}
+                    onChange={(e) => setPronounsPossessive(e.target.value)}
+                    className={inputClass}
+                    placeholder="e.g. their"
+                    autoComplete="off"
+                  />
+                </label>
+              </div>
             ) : null}
-            {displayNameNotice ? (
-              <p className="text-sm text-emerald-800 dark:text-emerald-200">{displayNameNotice}</p>
+
+            {profileError ? (
+              <p className="text-sm text-red-700 dark:text-red-300">{profileError}</p>
+            ) : null}
+            {profileNotice ? (
+              <p className="text-sm text-emerald-800 dark:text-emerald-200">{profileNotice}</p>
             ) : null}
             <button
               type="submit"
-              disabled={displayNameBusy}
+              disabled={profileBusy}
               className="rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
             >
-              {displayNameBusy ? "Saving…" : "Save name"}
+              {profileBusy ? "Saving…" : "Save profile"}
             </button>
           </form>
 
