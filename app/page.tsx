@@ -111,6 +111,15 @@ function formatTimeOnly(timestamp: string): string {
 
 const ALL_CATEGORIES: KnownCategory[] = [...KNOWN_CATEGORIES];
 
+/** OR logic: entry matches if it has any of the selected tags (case-insensitive). */
+function entryMatchesSelectedTags(entryTags: string[], selected: string[]): boolean {
+  if (selected.length === 0) {
+    return true;
+  }
+  const lower = (s: string) => s.toLowerCase();
+  return entryTags.some((t) => selected.some((s) => lower(t) === lower(s)));
+}
+
 function formatLocalYmd(d: Date): string {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
@@ -229,7 +238,7 @@ export default function Home() {
   const [entries, setEntries] = useState<Entry[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState<"all" | KnownCategory>("all");
-  const [activeTagFilter, setActiveTagFilter] = useState<string | null>(null);
+  const [activeTagFilters, setActiveTagFilters] = useState<string[]>([]);
   const [isMounted, setIsMounted] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [speechErrorMessage, setSpeechErrorMessage] = useState<string | null>(null);
@@ -459,14 +468,15 @@ export default function Home() {
       const matchesSearch =
         normalizedSearch.length === 0 ||
         entry.text.toLowerCase().includes(normalizedSearch) ||
-        entry.tags.some((t) => t.toLowerCase().includes(normalizedSearch));
+        entry.tags.some((t) => {
+          const tl = t.toLowerCase();
+          return tl.includes(normalizedSearch) || tl === normalizedSearch;
+        });
       const matchesCategory = entryMatchesKnownCategoryFilter(entry.category, activeCategory);
-      const matchesTag =
-        !activeTagFilter ||
-        entry.tags.some((t) => t.toLowerCase() === activeTagFilter.toLowerCase());
+      const matchesTag = entryMatchesSelectedTags(entry.tags, activeTagFilters);
       return matchesSearch && matchesCategory && matchesTag;
     });
-  }, [entries, searchQuery, activeCategory, activeTagFilter]);
+  }, [entries, searchQuery, activeCategory, activeTagFilters]);
 
   const groupedFilteredEntries = useMemo(
     () => groupFilteredEntriesByLocalDate(filteredEntries, new Date(clockTickMs)),
@@ -485,8 +495,21 @@ export default function Home() {
     [entries],
   );
 
+  const toggleTagFilter = useCallback((tag: string) => {
+    setActiveTagFilters((prev) => {
+      const lower = tag.toLowerCase();
+      const has = prev.some((t) => t.toLowerCase() === lower);
+      if (has) {
+        return prev.filter((t) => t.toLowerCase() !== lower);
+      }
+      return [...prev, tag];
+    });
+  }, []);
+
   const isFilterActive =
-    searchQuery.trim().length > 0 || activeCategory !== "all" || activeTagFilter !== null;
+    searchQuery.trim().length > 0 ||
+    activeCategory !== "all" ||
+    activeTagFilters.length > 0;
 
   const loadEntries = useCallback(async (options?: { silent?: boolean }) => {
     const silent = options?.silent ?? false;
@@ -671,7 +694,7 @@ export default function Home() {
       setEditingCategory("other");
       setEditingTags([]);
       setEditingTagInput("");
-      setActiveTagFilter(null);
+      setActiveTagFilters([]);
       setActiveCategory("all");
       setSearchQuery("");
       setSaveNoticeMessage("");
@@ -1769,19 +1792,44 @@ export default function Home() {
         return;
       }
 
+      if (!processResponse.ok) {
+        const errText = await processResponse.text().catch(() => "");
+        console.error(
+          "[entries save] /api/process HTTP error",
+          processResponse.status,
+          errText.slice(0, 500),
+        );
+      }
+
       if (processResponse.ok) {
-        const result = (await processResponse.json()) as {
+        let result: {
           acknowledgment?: string;
           entries?: ProcessApiEntry[];
         };
-        const mappedEntries =
-          result.entries
-            ?.map((entry) => ({
-              text: entry.text?.trim() ?? "",
-              category: sanitizeCategoryForStorage(entry.category),
-              tags: normalizeTagList(entry.tags),
-            }))
-            .filter((entry) => entry.text.length > 0) ?? [];
+        try {
+          result = (await processResponse.json()) as {
+            acknowledgment?: string;
+            entries?: ProcessApiEntry[];
+          };
+        } catch (parseErr) {
+          console.error("[entries save] invalid JSON from /api/process", parseErr);
+          result = {};
+        }
+
+        let mappedEntries: Array<{ text: string; category: KnownCategory; tags: string[] }> = [];
+        try {
+          mappedEntries =
+            result.entries
+              ?.map((entry) => ({
+                text: entry.text?.trim() ?? "",
+                category: sanitizeCategoryForStorage(entry.category),
+                tags: normalizeTagList(entry.tags),
+              }))
+              .filter((entry) => entry.text.length > 0) ?? [];
+        } catch (mapErr) {
+          console.error("[entries save] failed to map process entries (tags/categories)", mapErr);
+          mappedEntries = [];
+        }
 
         if (mappedEntries.length > 0) {
           processedEntries = mappedEntries;
@@ -1802,7 +1850,8 @@ export default function Home() {
           setSaveInlineStatus(ack);
         }
       }
-    } catch {
+    } catch (err) {
+      console.error("[entries save] /api/process request failed — inserting fallback rows:", err);
       if (newEntryCategorySelection !== "auto") {
         processedEntries = [
           { text: trimmedText, category: newEntryCategorySelection, tags: [] },
@@ -2639,39 +2688,42 @@ export default function Home() {
                   ))}
                 </div>
                 {tagFrequencyList.length > 0 ? (
-                  <div className="space-y-1.5">
-                    <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400">Tags</p>
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setActiveTagFilter(null)}
-                        className={`rounded-full px-3 py-1 text-[11px] font-medium transition ${
-                          activeTagFilter === null
-                            ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
-                            : "bg-zinc-200 text-zinc-700 hover:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
-                        }`}
-                      >
-                        All tags
-                      </button>
-                      {tagFrequencyList.map(({ tag, count }) => (
+                  <div className="space-y-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
+                        Tags ({tagFrequencyList.length})
+                      </p>
+                      {activeTagFilters.length > 0 ? (
                         <button
-                          key={tag}
                           type="button"
-                          onClick={() =>
-                            setActiveTagFilter((prev) => (prev === tag ? null : tag))
-                          }
-                          className={`rounded-full px-2.5 py-1 text-[11px] font-medium transition ${
-                            activeTagFilter === tag
-                              ? "bg-zinc-800 text-white dark:bg-zinc-200 dark:text-zinc-900"
-                              : "border border-zinc-200 bg-zinc-50 text-zinc-700 hover:bg-zinc-100 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
-                          }`}
+                          onClick={() => setActiveTagFilters([])}
+                          className="text-xs font-medium text-zinc-600 underline-offset-2 hover:underline dark:text-zinc-400"
                         >
-                          {tag}
-                          <span className="ml-1 tabular-nums text-zinc-500 dark:text-zinc-400">
-                            {count}
-                          </span>
+                          Clear tags
                         </button>
-                      ))}
+                      ) : null}
+                    </div>
+                    <div className="-mx-1 flex gap-2 overflow-x-auto pb-1 pt-0.5">
+                      {tagFrequencyList.map(({ tag, count }) => {
+                        const selected = activeTagFilters.some(
+                          (s) => s.toLowerCase() === tag.toLowerCase(),
+                        );
+                        return (
+                          <button
+                            key={tag}
+                            type="button"
+                            onClick={() => toggleTagFilter(tag)}
+                            className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium transition ${
+                              selected
+                                ? "bg-zinc-800 text-white dark:bg-zinc-200 dark:text-zinc-900"
+                                : "border border-zinc-200 bg-zinc-50 text-zinc-600 hover:bg-zinc-100 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800"
+                            }`}
+                          >
+                            {tag}
+                            <span className="ml-1 tabular-nums opacity-80">{count}</span>
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
                 ) : null}
@@ -2811,6 +2863,30 @@ export default function Home() {
                                         {categoryDisplayLabel(entry.category)}
                                       </span>
                                     )}
+                                    {editingEntryId !== entry.id &&
+                                    !entriesSelectMode &&
+                                    entry.tags.length > 0
+                                      ? entry.tags.map((tag) => (
+                                          <button
+                                            key={`${entry.id}-hdr-${tag}`}
+                                            type="button"
+                                            data-entry-longpress-ignore
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              toggleTagFilter(tag);
+                                            }}
+                                            className={`rounded-full px-2 py-0.5 text-[10px] font-medium transition ${
+                                              activeTagFilters.some(
+                                                (s) => s.toLowerCase() === tag.toLowerCase(),
+                                              )
+                                                ? "bg-zinc-700 text-white dark:bg-zinc-300 dark:text-zinc-900"
+                                                : "border border-zinc-200/90 bg-zinc-50 text-zinc-500 hover:bg-zinc-100 dark:border-zinc-600 dark:bg-zinc-800/90 dark:text-zinc-400 dark:hover:bg-zinc-700"
+                                            }`}
+                                          >
+                                            {tag}
+                                          </button>
+                                        ))
+                                      : null}
                                     {!entriesSelectMode ? (
                                       <>
                                         <button
@@ -2882,12 +2958,12 @@ export default function Home() {
                                         value={editingTagInput}
                                         onChange={(e) => setEditingTagInput(e.target.value)}
                                         onKeyDown={(e) => {
-                                          if (e.key === "Enter") {
+                                          if (e.key === "Enter" || e.key === ",") {
                                             e.preventDefault();
                                             commitEditingTagFromInput();
                                           }
                                         }}
-                                        placeholder="Add tag…"
+                                        placeholder="Add tag..."
                                         className="min-h-9 w-full min-w-0 rounded-lg border border-zinc-300 bg-white px-2 py-1.5 text-xs outline-none transition focus:border-zinc-400 focus:ring-2 focus:ring-zinc-300 dark:border-zinc-600 dark:bg-zinc-950 dark:focus:border-zinc-500 dark:focus:ring-zinc-700 sm:max-w-xs"
                                       />
                                       <datalist id={`edit-tag-datalist-${entry.id}`}>
@@ -2941,33 +3017,6 @@ export default function Home() {
                                     <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed">
                                       {entry.text}
                                     </p>
-                                    {entry.tags.length > 0 ? (
-                                      <div
-                                        className="mt-2 flex flex-wrap gap-1.5"
-                                        onClick={(e) => e.stopPropagation()}
-                                      >
-                                        {entry.tags.map((tag) => (
-                                          <button
-                                            key={`${entry.id}-${tag}`}
-                                            type="button"
-                                            data-entry-longpress-ignore
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              setActiveTagFilter((prev) =>
-                                                prev === tag ? null : tag,
-                                              );
-                                            }}
-                                            className={`rounded-full px-2 py-0.5 text-[11px] font-medium transition ${
-                                              activeTagFilter === tag
-                                                ? "bg-zinc-800 text-white dark:bg-zinc-200 dark:text-zinc-900"
-                                                : "border border-zinc-200 bg-zinc-50 text-zinc-600 hover:bg-zinc-100 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
-                                            }`}
-                                          >
-                                            {tag}
-                                          </button>
-                                        ))}
-                                      </div>
-                                    ) : null}
                                   </>
                                 )}
                               </div>

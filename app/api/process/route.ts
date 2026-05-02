@@ -136,18 +136,18 @@ Guardrails:
 - If there is genuinely no first-person author reference left to rewrite, leave wording unchanged aside from step 1 cleanup.`;
 }
 
-const TAG_EXTRACTION_BLOCK = `TAGS (for EACH entry in the entries array):
-Extract tags from that entry's FINAL third-person text (after STEP 4). Tags must be a JSON array of strings, e.g. "tags": ["Dan Bi", "biking"] — never a single string, never omit the key.
+const TAG_EXTRACTION_BLOCK = `TAGS — Generate 1–5 relevant tags for EACH entry (after STEP 4 third-person text is final).
 
-Include when applicable:
-- Names of specific people (e.g. Dan Bi, Eugene Park) — if a person is named, include their name in tags; do NOT leave tags empty just because the sentence is short.
-- Specific topics or things (e.g. Abilify, NYU, biking)
-- Use consistent capitalization as in the entry (Dan Bi not danbi)
-- Don't tag generic concepts if you can tag a specific person or thing instead
-- Limit to 5 tags max per entry
-- Only use [] when there are truly no people, places, medications, or concrete topics to tag
+Tags should be:
+- Specific names of people mentioned (e.g. Dan Bi, mom, Eric's brother) — use Title Case for proper names (Dan Bi not danbi).
+- Specific things or topics (e.g. Abilify, NYU, biking, anniversary) — use lowercase for general topics (biking not Biking).
+- Match the user's wording when they use a relationship word: if they wrote "mom", tag "mom" not "Mother".
+- Skip tagging only when the entry is too short or too generic to justify tags; otherwise include names and concrete topics.
 
-Return tags in the JSON as shown below.`;
+The "tags" field MUST be a JSON array of strings on every entry object — never omit it, never use a single string instead of an array.
+
+Example shape:
+{"entries":[{"text":"...","category":"relationships","tags":["Dan Bi","mom","hiking"]}]}`;
 
 function buildAutoSystemPrompt(
   userName: string,
@@ -196,8 +196,8 @@ After processing the entry, also generate a brief, natural acknowledgment messag
 - 'Saving 3 medication entries'
 Don't be overly chatty or use exclamation marks. Just a calm confirmation.
 
-Return ONLY valid JSON, no markdown:
-{"acknowledgment": "brief calm confirmation under 8 words", "entries": [{"text": "cleaned and third-person text", "category": "health|relationships|career|logistics|finance|emotional|other", "tags": ["Tag One", "Tag Two"]}]}`;
+Return ONLY valid JSON, no markdown fences:
+{"acknowledgment": "brief calm confirmation under 8 words", "entries": [{"text": "cleaned and third-person text", "category": "relationships", "tags": ["Dan Bi", "biking"]}]}`;
 }
 
 function buildManualSystemPrompt(
@@ -222,8 +222,8 @@ ${thirdPersonInstructionBlock(userName, pronounsLine, examplePossessive)}
 
 After processing, generate a brief acknowledgment under 8 words.
 
-Return ONLY valid JSON, no markdown:
-{"acknowledgment": "brief calm confirmation under 8 words", "entries": [{"text": "cleaned and third-person text", "category": "${fixedCategory}", "tags": ["Tag One"]}]}`;
+Return ONLY valid JSON, no markdown fences:
+{"acknowledgment": "brief calm confirmation under 8 words", "entries": [{"text": "cleaned and third-person text", "category": "${fixedCategory}", "tags": ["Dan Bi", "biking"]}]}`;
 }
 
 async function callAnthropicProcess(
@@ -240,7 +240,7 @@ async function callAnthropicProcess(
     },
     body: JSON.stringify({
       model: "claude-sonnet-4-5-20250929",
-      max_tokens: 1400,
+      max_tokens: 2048,
       temperature: 0,
       system,
       messages: [
@@ -291,11 +291,24 @@ function normalizeModelEntries(parsedModelJson: {
   }
 
   const cleanedEntries = parsedModelJson.entries
-    .map((entry) => ({
-      text: entry.text?.trim() ?? "",
-      category: sanitizeCategory(entry.category),
-      tags: normalizeTagList(entry.tags),
-    }))
+    .map((entry, idx) => {
+      let tags: string[] = [];
+      try {
+        tags = normalizeTagList(entry.tags);
+      } catch (tagErr) {
+        console.error(
+          "[process] tag normalization failed for entry index",
+          idx,
+          tagErr instanceof Error ? tagErr.message : tagErr,
+        );
+        tags = [];
+      }
+      return {
+        text: entry.text?.trim() ?? "",
+        category: sanitizeCategory(entry.category),
+        tags,
+      };
+    })
     .filter((entry) => entry.text.length > 0);
 
   debugProcess(
@@ -305,6 +318,13 @@ function normalizeModelEntries(parsedModelJson: {
 
   if (cleanedEntries.length === 0) {
     return null;
+  }
+
+  const allTagsEmpty = cleanedEntries.every((e) => e.tags.length === 0);
+  if (allTagsEmpty) {
+    console.warn(
+      "[process] All entries have empty tags after parse — check Claude response or prompt.",
+    );
   }
 
   const acknowledgmentRaw = parsedModelJson.acknowledgment;
@@ -411,7 +431,7 @@ export async function POST(request: Request) {
       entries: normalized.entries,
     });
   } catch (error) {
-    console.error("[process] unexpected error:", error);
+    console.error("[process] unexpected error — returning fallback with empty tags:", error);
     return NextResponse.json(fallbackEntries(originalText));
   }
 }

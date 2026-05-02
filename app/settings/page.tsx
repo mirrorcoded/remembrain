@@ -78,6 +78,8 @@ export default function SettingsPage() {
   const [tagsCatalogBusy, setTagsCatalogBusy] = useState(false);
   const [tagsCatalogError, setTagsCatalogError] = useState<string | null>(null);
   const [tagRenameBusy, setTagRenameBusy] = useState<string | null>(null);
+  const [renameTargetTag, setRenameTargetTag] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState("");
 
   const [signOutBusy, setSignOutBusy] = useState(false);
 
@@ -733,8 +735,14 @@ export default function SettingsPage() {
           <h2 id="tags-heading" className="text-base font-semibold">
             Tags
           </h2>
+          <p className="text-sm font-medium text-zinc-800 dark:text-zinc-200">
+            Total tags:{" "}
+            <span className="tabular-nums text-zinc-600 dark:text-zinc-400">
+              {tagsCatalogBusy ? "…" : tagsCatalog.length}
+            </span>
+          </p>
           <p className="text-sm text-zinc-600 dark:text-zinc-400">
-            Rename or remove tags across all entries. Changes apply immediately.
+            Rename or delete tags across all entries. Changes apply immediately.
           </p>
           {tagsCatalogError ? (
             <p className="text-sm text-red-700 dark:text-red-300">{tagsCatalogError}</p>
@@ -748,34 +756,70 @@ export default function SettingsPage() {
               {tagsCatalog.map((row) => (
                 <li
                   key={row.tag}
-                  className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm"
+                  className="flex flex-col gap-2 px-3 py-2 text-sm sm:flex-row sm:flex-wrap sm:items-center sm:justify-between"
                 >
-                  <span className="font-medium text-zinc-900 dark:text-zinc-100">{row.tag}</span>
-                  <span className="tabular-nums text-zinc-500">{row.count}</span>
-                  <div className="flex w-full shrink-0 gap-2 sm:w-auto sm:justify-end">
-                    <button
-                      type="button"
-                      disabled={tagRenameBusy !== null}
-                      onClick={() => {
-                        const next = window.prompt(`Rename tag "${row.tag}" to:`, row.tag);
-                        if (next === null) {
-                          return;
+                  {renameTargetTag === row.tag ? (
+                    <div className="flex w-full flex-wrap items-center gap-2">
+                      <input
+                        type="text"
+                        value={renameDraft}
+                        onChange={(e) => setRenameDraft(e.target.value)}
+                        className={`${inputClass} max-w-xs shrink py-1.5 text-sm`}
+                        aria-label="New tag name"
+                      />
+                      <button
+                        type="button"
+                        disabled={tagRenameBusy !== null}
+                        onClick={() =>
+                          void (async () => {
+                            await handleRenameTagEverywhere(row.tag, renameDraft);
+                            setRenameTargetTag(null);
+                          })()
                         }
-                        void handleRenameTagEverywhere(row.tag, next);
-                      }}
-                      className="rounded-lg border border-zinc-300 px-2 py-1 text-xs dark:border-zinc-600"
-                    >
-                      {tagRenameBusy === row.tag ? "…" : "Rename"}
-                    </button>
-                    <button
-                      type="button"
-                      disabled={tagRenameBusy !== null}
-                      onClick={() => void handleDeleteTagEverywhere(row.tag)}
-                      className="rounded-lg border border-red-200 px-2 py-1 text-xs text-red-800 dark:border-red-900 dark:text-red-200"
-                    >
-                      {tagRenameBusy === row.tag ? "…" : "Remove"}
-                    </button>
-                  </div>
+                        className="rounded-lg bg-zinc-900 px-2 py-1 text-xs font-medium text-white dark:bg-zinc-100 dark:text-zinc-900"
+                      >
+                        Apply
+                      </button>
+                      <button
+                        type="button"
+                        disabled={tagRenameBusy !== null}
+                        onClick={() => setRenameTargetTag(null)}
+                        className="rounded-lg border border-zinc-300 px-2 py-1 text-xs dark:border-zinc-600"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex min-w-0 flex-1 items-center gap-3">
+                        <span className="truncate font-medium text-zinc-900 dark:text-zinc-100">
+                          {row.tag}
+                        </span>
+                        <span className="shrink-0 tabular-nums text-zinc-500">{row.count}</span>
+                      </div>
+                      <div className="flex shrink-0 gap-2">
+                        <button
+                          type="button"
+                          disabled={tagRenameBusy !== null}
+                          onClick={() => {
+                            setRenameTargetTag(row.tag);
+                            setRenameDraft(row.tag);
+                          }}
+                          className="rounded-lg border border-zinc-300 px-2 py-1 text-xs dark:border-zinc-600"
+                        >
+                          Rename
+                        </button>
+                        <button
+                          type="button"
+                          disabled={tagRenameBusy !== null}
+                          onClick={() => void handleDeleteTagEverywhere(row.tag)}
+                          className="rounded-lg border border-red-200 px-2 py-1 text-xs text-red-800 dark:border-red-900 dark:text-red-200"
+                        >
+                          {tagRenameBusy === row.tag ? "…" : "Delete"}
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </li>
               ))}
             </ul>
