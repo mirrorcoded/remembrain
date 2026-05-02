@@ -6,12 +6,17 @@ import {
 import { normalizeUserLocale, type UiLocale } from "@/lib/i18n";
 import { getAuthenticatedSupabase } from "@/lib/supabase/server";
 import {
+  derivedGivenNameForThirdPerson,
   displayNameFromUser,
+  koreanTopicParticlePhrase,
   possessiveExample,
   processingDisplayName,
   pronounsLabelFromUser,
 } from "@/lib/user-profile";
 import { NextResponse } from "next/server";
+
+/** Auth-dependent route: never cache user-bound prompts or responses. */
+export const dynamic = "force-dynamic";
 
 function debugProcess(...args: unknown[]) {
   if (process.env.NODE_ENV === "development" || process.env.REMEMBRAIN_DEBUG_PROCESS === "1") {
@@ -138,56 +143,46 @@ Guardrails:
 - If there is genuinely no first-person author reference left to rewrite, leave wording unchanged aside from step 1 cleanup.`;
 }
 
-function koreanThirdPersonInstructionBlock(
-  displayNameFull: string,
-  nameFallback: string,
-): string {
-  const profileDisplay =
-    displayNameFull.trim() || nameFallback.trim() || "User";
+function koreanThirdPersonInstructionBlock(params: {
+  profileDisplay: string;
+  authorGivenName: string;
+  topicParticleExample: string;
+}): string {
+  const { profileDisplay, authorGivenName, topicParticleExample } = params;
+
+  const topicLine =
+    topicParticleExample.length > 0
+      ? `REFERENCE TOPIC FORM for this author only (use ONLY with AUTHOR_GIVEN_NAME below; never substitute another person's name): "${topicParticleExample}"
+Example applying ONLY this author: if adding an explicit topic subject for hunger/state, you might write "${topicParticleExample} 배고프다" — but omitting the subject ("배고프다") is fine when natural.`
+      : "Derive topic particles from AUTHOR_GIVEN_NAME using 받침 rules below.";
 
   return `STEP 4 - Third person (Korean):
 
-USER DISPLAY NAME (exactly as saved in profile — use this to derive the given name; never rewrite using the full three-syllable Korean name as subject): ${profileDisplay}
+CRITICAL — Journal author identity for THIS request ONLY:
+- PROFILE DISPLAY NAME (from authenticated user's settings): ${profileDisplay}
+- AUTHOR_GIVEN_NAME (the ONLY string you may use when naming the journal author in Korean third person): ${authorGivenName}
 
-If the user's language preference is Korean or the entry is primarily in Korean, follow these rules and natural Korean journal style.
+You MUST use AUTHOR_GIVEN_NAME for all 나/내/저 replacements and any explicit subject referring to the writer. NEVER use a different person's name from training data, other examples, or other users — even if that name appeared in old instructions elsewhere.
 
-For Korean entries:
+${topicLine}
 
-1. Extract the given name from the user's full name (drop the family name). Examples: 배수범 → 수범, 김단비 → 단비, 박지민 → 지민, 이수아 → 수아.
-   If DISPLAY NAME uses Western order with spaces, treat the appropriate given-name token as you would in Korean personal context.
+Rules (apply using AUTHOR_GIVEN_NAME only):
 
-2. Apply the correct particle based on the final syllable's 받침 (final consonant) of the GIVEN NAME only:
-   - If the given name ends in a consonant (받침 있음), append 이 before the particle that would otherwise start with a consonant: 수범이는, 동훈이는, 지민이는 (지민 ends with ㄴ = consonant), 수범이가, 수범이를
-   - If the given name ends in a vowel (받침 없음), use the particle directly on the name: 단비는, 수아는, 단비가, 수아를
+1. Do not use the full three-syllable Korean legal-style name as subject (e.g. 김단비는 as subject line); use AUTHOR_GIVEN_NAME + natural particles only.
 
-3. Particle reference (given name + particle):
-   - Topic/subject 은/는: with 받침 → 이는 (수범이는); without 받침 → 는 (단비는)
-   - Subject 이/가: with 받침 → 이가 (수범이가); without 받침 → 가 (단비가)
-   - Object 을/를: with 받침 → 이를 (수범이를); without 받침 → 를 (단비를)
-   - Possessive: with 받침 → 이의 or 이 before noun (수범이의 생일 / 수범이 생일); without 받침 → 의 or bare noun (단비의 생일 / 단비 생일)
-   - With 와/과 colloquial: with 받침 → 이랑 (수범이랑); without 받침 → 랑 (단비랑)
+2. 받침 at the end of AUTHOR_GIVEN_NAME:
+   - 받침 있음: append 이 before particles that need it — topic 이는, subject 이가, object 이를, colloquial 이랑, possessive 이의 or 이 before noun.
+   - 받침 없음: 는, 가, 를, 랑, 의 or bare noun before noun.
 
-4. Replace 나/저/내/제 (I/me/my) with the appropriate given-name + particle combination:
-   - 나는 → 수범이는 (or 단비는, depending on user)
-   - 내가 → 수범이가
-   - 나를 → 수범이를
-   - 내 → 수범이 or 수범이의 before a noun
-   - 나랑 → 수범이랑
+3. Replace 나/저/내/제 with forms built from AUTHOR_GIVEN_NAME only (match politeness and tense).
 
-5. Do not use the full name (e.g. 배수범) as the subject — always use just the given name (수범) with appropriate particles. Full-name + 은 (배수범은) sounds overly formal/unnatural in a personal journal rewrite.
+4. Maintain verb endings and speech level (반말/존댓말) as in the original entry.
 
-6. Maintain the user's verb endings and politeness level (panmal/jondaetmal as written).
+5. Korean often omits the subject when obvious — do not force the name into every sentence.
 
-Korean often drops the subject when it is clear from context; do not force the name into every clause if a native speaker would omit it.
+6. Names or particles appearing in generic grammar explanations in this prompt are NOT data about the user — ignore them for choosing the author's name.
 
-For entries clearly not in Korean, apply the English third-person rules from the standard block mentally, but OUTPUT text in the entry's language.
-
-Example rewrites (given name must match this user's derived given name, not these literals if different):
-- Display 배수범, entry "나는 축구를 좋아한다" → "수범이는 축구를 좋아한다"
-- Display 배수범, entry "내 생일은 5월 19일" → "수범이 생일은 5월 19일" or "수범이의 생일은 5월 19일"
-- Display 김단비, entry "나는 책을 읽었어" → "단비는 책을 읽었어"
-- Display 박지민, entry "내가 먼저 갈게" → "지민이가 먼저 갈게"
-- Display 이수아, entry "나랑 친구야" → "수아랑 친구야"`;
+For entries clearly not in Korean, apply the English third-person rules mentally, but OUTPUT in the entry's language.`;
 }
 
 const TAG_EXTRACTION_BLOCK = `TAGS — Generate 1–5 relevant tags for EACH entry (after STEP 4 third-person text is final).
@@ -218,11 +213,17 @@ function buildAutoSystemPrompt(
   pronounsLine: string,
   examplePossessive: string,
   uiLocale: UiLocale,
-  displayNameFull: string,
+  profileDisplay: string,
+  authorGivenKo: string,
+  topicParticleKo: string,
 ): string {
   const thirdBlock =
     uiLocale === "ko"
-      ? koreanThirdPersonInstructionBlock(displayNameFull, userName)
+      ? koreanThirdPersonInstructionBlock({
+          profileDisplay,
+          authorGivenName: authorGivenKo,
+          topicParticleExample: topicParticleKo,
+        })
       : thirdPersonInstructionBlock(userName, pronounsLine, examplePossessive);
   const tagBlock = uiLocale === "ko" ? TAG_EXTRACTION_BLOCK_KO : TAG_EXTRACTION_BLOCK;
   const ackLang =
@@ -283,11 +284,17 @@ function buildManualSystemPrompt(
   examplePossessive: string,
   fixedCategory: KnownCategory,
   uiLocale: UiLocale,
-  displayNameFull: string,
+  profileDisplay: string,
+  authorGivenKo: string,
+  topicParticleKo: string,
 ): string {
   const thirdBlock =
     uiLocale === "ko"
-      ? koreanThirdPersonInstructionBlock(displayNameFull, userName)
+      ? koreanThirdPersonInstructionBlock({
+          profileDisplay,
+          authorGivenName: authorGivenKo,
+          topicParticleExample: topicParticleKo,
+        })
       : thirdPersonInstructionBlock(userName, pronounsLine, examplePossessive);
   const tagBlock = uiLocale === "ko" ? TAG_EXTRACTION_BLOCK_KO : TAG_EXTRACTION_BLOCK;
 
@@ -434,6 +441,23 @@ export async function POST(request: Request) {
   const pronounsLine = pronounsLabelFromUser(auth.user);
   const examplePossessive = possessiveExample(userName);
 
+  const derivedKoGiven = derivedGivenNameForThirdPerson(displayNameFull);
+  const authorGivenKo =
+    derivedKoGiven.trim().length > 0 ? derivedKoGiven.trim() : userName.trim();
+  const profileDisplay =
+    displayNameFull.trim().length > 0 ? displayNameFull.trim() : userName.trim() || "User";
+  const topicParticleKo =
+    uiLocale === "ko" ? koreanTopicParticlePhrase(authorGivenKo) : "";
+
+  console.log("[process] auth_context", {
+    user_id: auth.user.id,
+    display_name_raw: displayNameFull.length > 0 ? displayNameFull : "(empty)",
+    pronouns: pronounsLine,
+    ui_locale: uiLocale,
+    author_given_ko: authorGivenKo,
+    topic_particle_example: topicParticleKo || "(n/a)",
+  });
+
   let originalText = "";
 
   try {
@@ -463,7 +487,9 @@ export async function POST(request: Request) {
         examplePossessive,
         category,
         uiLocale,
-        displayNameFull,
+        profileDisplay,
+        authorGivenKo,
+        topicParticleKo,
       );
       const { ok, modelText } = await callAnthropicProcess(apiKey, system, originalText);
       if (!ok) {
@@ -505,7 +531,9 @@ export async function POST(request: Request) {
       pronounsLine,
       examplePossessive,
       uiLocale,
-      displayNameFull,
+      profileDisplay,
+      authorGivenKo,
+      topicParticleKo,
     );
     debugProcess("Auto mode, input length:", originalText.length);
     const { ok, modelText } = await callAnthropicProcess(apiKey, system, originalText);

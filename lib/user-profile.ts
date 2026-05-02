@@ -74,6 +74,68 @@ export function greetingLineForUser(user: User): string {
   return "Welcome";
 }
 
+const HANGUL_RUN = /^[가-힣]+$/;
+
+/**
+ * Given name for Korean third-person journal rewrite (스토어드 display_name 기준).
+ * Heuristics: "김 단비" → 단비; three-syllable 한글 한 덩어리 "김단비" → 단비 (첫 글자 성 제거);
+ * 서양식 "Eric Bae" → Eric; given만 "단비"(2글자) → 그대로 단비.
+ */
+export function derivedGivenNameForThirdPerson(displayNameFull: string): string {
+  const raw = displayNameFull.trim();
+  if (!raw) {
+    return "";
+  }
+
+  const parts = raw.split(/\s+/).filter(Boolean);
+
+  if (parts.length >= 2) {
+    const first = parts[0]!;
+    const restJoined = parts.slice(1).join("");
+    if (
+      HANGUL_RUN.test(first) &&
+      first.length === 1 &&
+      restJoined.length > 0 &&
+      HANGUL_RUN.test(restJoined)
+    ) {
+      return restJoined;
+    }
+    if (!HANGUL_RUN.test(first)) {
+      return first;
+    }
+    return restJoined || first;
+  }
+
+  const single = parts[0] ?? raw;
+  if (HANGUL_RUN.test(single) && single.length >= 3) {
+    return single.slice(1);
+  }
+
+  return single;
+}
+
+/** Whether the last Hangul syllable has 받침 (affects 이/은 vs 가/는 등). Non-Hangul → false (treat like vowel-ending). */
+export function hangulGivenNameEndsWithBatchim(givenName: string): boolean {
+  const last = givenName[givenName.length - 1];
+  if (!last) {
+    return false;
+  }
+  const code = last.charCodeAt(0);
+  if (code < 0xac00 || code > 0xd7a3) {
+    return false;
+  }
+  return (code - 0xac00) % 28 !== 0;
+}
+
+/** Typical topic/topic-marked subject form for third-person state sentences (e.g. 단비는, 수범이는). */
+export function koreanTopicParticlePhrase(givenName: string): string {
+  const g = givenName.trim();
+  if (!g) {
+    return "";
+  }
+  return hangulGivenNameEndsWithBatchim(g) ? `${g}이는` : `${g}는`;
+}
+
 /** Raw profile display name (may be full Korean name, "Given Family", etc.). Used for Korean third-person rules. */
 export function displayNameFromUser(user: User): string {
   const meta = user.user_metadata as Record<string, unknown> | undefined;
