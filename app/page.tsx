@@ -1816,6 +1816,8 @@ export default function Home() {
           result = {};
         }
 
+        console.log("[entries save] Raw /api/process JSON entries field:", result.entries);
+
         let mappedEntries: Array<{ text: string; category: KnownCategory; tags: string[] }> = [];
         try {
           mappedEntries =
@@ -1831,16 +1833,19 @@ export default function Home() {
           mappedEntries = [];
         }
 
+        console.log(
+          "[entries save] After normalizeTagList (mappedEntries → will assign processedEntries):",
+          mappedEntries.map((e) => ({ category: e.category, tags: e.tags })),
+        );
+
         if (mappedEntries.length > 0) {
           processedEntries = mappedEntries;
         }
 
-        if (process.env.NODE_ENV === "development") {
-          console.log(
-            "[entries save] /api/process result → processedEntries",
-            processedEntries.map((e) => ({ category: e.category, tags: e.tags })),
-          );
-        }
+        console.log(
+          "[entries save] Final processedEntries before Supabase loop:",
+          processedEntries.map((e) => ({ category: e.category, tags: e.tags })),
+        );
 
         if (useAutoCategory) {
           const ack =
@@ -1860,22 +1865,25 @@ export default function Home() {
     }
 
     for (const entry of processedEntries) {
-      if (process.env.NODE_ENV === "development") {
-        console.log("[entries save] Supabase insert payload:", {
-          category: entry.category,
-          tags: entry.tags,
-          textPreview: entry.text.slice(0, 80),
-        });
+      const insertPayload = {
+        text: entry.text,
+        category: entry.category,
+        tags: entry.tags,
+      };
+      console.log("[entries save] Supabase insert payload (exact object):", insertPayload);
+      console.log("[entries save] tags array reference:", entry.tags, "length:", entry.tags?.length);
+
+      let error = (await supabase.from("entries").insert(insertPayload)).error;
+
+      if (error) {
+        console.warn("[entries save] first insert error:", error.message, error.code, error);
       }
-      let error =
-        (
-          await supabase.from("entries").insert({
-            text: entry.text,
-            category: entry.category,
-            tags: entry.tags,
-          })
-        ).error;
+
       if (error && isMissingTagsColumnError(error)) {
+        console.warn(
+          "[entries save] Retrying insert without tags column (schema missing tags only):",
+          error.message,
+        );
         ({ error } = await supabase.from("entries").insert({
           text: entry.text,
           category: entry.category,

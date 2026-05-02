@@ -144,12 +144,13 @@ export function normalizeTagList(raw: unknown, maxTags = 5): string[] {
   if (!Array.isArray(raw)) {
     return [];
   }
+  /** Flatten accidental [["a","b"]] from JSON shape mismatches. */
+  const flattened = raw
+    .flat(Infinity)
+    .filter((item): item is string => typeof item === "string");
   const out: string[] = [];
   const seenLower = new Set<string>();
-  for (const item of raw) {
-    if (typeof item !== "string") {
-      continue;
-    }
+  for (const item of flattened) {
     const t = item.trim();
     if (!t) {
       continue;
@@ -167,7 +168,11 @@ export function normalizeTagList(raw: unknown, maxTags = 5): string[] {
   return out;
 }
 
-/** PostgREST / Postgres when `tags` column was never added — retry inserts/updates without `tags`. */
+/**
+ * Only true when PostgREST/Postgres indicates the `tags` column is absent from the schema.
+ * Must NOT match unrelated errors whose message happens to contain "tags" or "does not exist"
+ * — otherwise the client retries insert without `tags` and silently wipes tag data.
+ */
 export function isMissingTagsColumnError(error: {
   message?: string;
   code?: string;
@@ -176,10 +181,22 @@ export function isMissingTagsColumnError(error: {
     return false;
   }
   const m = String(error.message ?? "").toLowerCase();
-  return (
-    m.includes("tags") ||
-    m.includes("schema cache") ||
-    m.includes("does not exist") ||
-    error.code === "42703"
-  );
+  const code = String(error.code ?? "");
+  if (code === "42703") {
+    return m.includes("tags");
+  }
+  if (m.includes("schema cache") && m.includes("tags")) {
+    return true;
+  }
+  if (m.includes("could not find") && m.includes("tags")) {
+    return true;
+  }
+  if (
+    m.includes("column") &&
+    m.includes("tags") &&
+    (m.includes("does not exist") || m.includes("unknown"))
+  ) {
+    return true;
+  }
+  return false;
 }
