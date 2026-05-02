@@ -6,6 +6,7 @@ import {
 import { normalizeUserLocale, type UiLocale } from "@/lib/i18n";
 import { getAuthenticatedSupabase } from "@/lib/supabase/server";
 import {
+  displayNameFromUser,
   possessiveExample,
   processingDisplayName,
   pronounsLabelFromUser,
@@ -137,19 +138,56 @@ Guardrails:
 - If there is genuinely no first-person author reference left to rewrite, leave wording unchanged aside from step 1 cleanup.`;
 }
 
-function koreanThirdPersonInstructionBlock(userName: string): string {
+function koreanThirdPersonInstructionBlock(
+  displayNameFull: string,
+  nameFallback: string,
+): string {
+  const profileDisplay =
+    displayNameFull.trim() || nameFallback.trim() || "User";
+
   return `STEP 4 - Third person (Korean):
 
-If the user's language preference is Korean or the entry is primarily in Korean, follow Korean grammatical conventions. Korean often drops the subject when implied. Convert first-person to third-person by:
-- Replacing 나/저/내/제 (I/me/my) with the user's name (${userName}) when the subject would otherwise be unclear or when the entry mentions the user as part of an action
-- Don't force unnecessary subject pronouns — Korean reads more naturally without them
-- Maintain the user's verb endings and politeness level
-- Examples: '나는 댄비랑 하이킹했어' → '${userName}은 댄비랑 하이킹했어' or just '댄비와 하이킹함'
-- '내 생일은 5월 19일이야' → '${userName}의 생일은 5월 19일'
+USER DISPLAY NAME (exactly as saved in profile — use this to derive the given name; never rewrite using the full three-syllable Korean name as subject): ${profileDisplay}
+
+If the user's language preference is Korean or the entry is primarily in Korean, follow these rules and natural Korean journal style.
+
+For Korean entries:
+
+1. Extract the given name from the user's full name (drop the family name). Examples: 배수범 → 수범, 김단비 → 단비, 박지민 → 지민, 이수아 → 수아.
+   If DISPLAY NAME uses Western order with spaces, treat the appropriate given-name token as you would in Korean personal context.
+
+2. Apply the correct particle based on the final syllable's 받침 (final consonant) of the GIVEN NAME only:
+   - If the given name ends in a consonant (받침 있음), append 이 before the particle that would otherwise start with a consonant: 수범이는, 동훈이는, 지민이는 (지민 ends with ㄴ = consonant), 수범이가, 수범이를
+   - If the given name ends in a vowel (받침 없음), use the particle directly on the name: 단비는, 수아는, 단비가, 수아를
+
+3. Particle reference (given name + particle):
+   - Topic/subject 은/는: with 받침 → 이는 (수범이는); without 받침 → 는 (단비는)
+   - Subject 이/가: with 받침 → 이가 (수범이가); without 받침 → 가 (단비가)
+   - Object 을/를: with 받침 → 이를 (수범이를); without 받침 → 를 (단비를)
+   - Possessive: with 받침 → 이의 or 이 before noun (수범이의 생일 / 수범이 생일); without 받침 → 의 or bare noun (단비의 생일 / 단비 생일)
+   - With 와/과 colloquial: with 받침 → 이랑 (수범이랑); without 받침 → 랑 (단비랑)
+
+4. Replace 나/저/내/제 (I/me/my) with the appropriate given-name + particle combination:
+   - 나는 → 수범이는 (or 단비는, depending on user)
+   - 내가 → 수범이가
+   - 나를 → 수범이를
+   - 내 → 수범이 or 수범이의 before a noun
+   - 나랑 → 수범이랑
+
+5. Do not use the full name (e.g. 배수범) as the subject — always use just the given name (수범) with appropriate particles. Full-name + 은 (배수범은) sounds overly formal/unnatural in a personal journal rewrite.
+
+6. Maintain the user's verb endings and politeness level (panmal/jondaetmal as written).
+
+Korean often drops the subject when it is clear from context; do not force the name into every clause if a native speaker would omit it.
 
 For entries clearly not in Korean, apply the English third-person rules from the standard block mentally, but OUTPUT text in the entry's language.
 
-USER NAME FOR REFERENCE: ${userName}`;
+Example rewrites (given name must match this user's derived given name, not these literals if different):
+- Display 배수범, entry "나는 축구를 좋아한다" → "수범이는 축구를 좋아한다"
+- Display 배수범, entry "내 생일은 5월 19일" → "수범이 생일은 5월 19일" or "수범이의 생일은 5월 19일"
+- Display 김단비, entry "나는 책을 읽었어" → "단비는 책을 읽었어"
+- Display 박지민, entry "내가 먼저 갈게" → "지민이가 먼저 갈게"
+- Display 이수아, entry "나랑 친구야" → "수아랑 친구야"`;
 }
 
 const TAG_EXTRACTION_BLOCK = `TAGS — Generate 1–5 relevant tags for EACH entry (after STEP 4 third-person text is final).
@@ -180,10 +218,11 @@ function buildAutoSystemPrompt(
   pronounsLine: string,
   examplePossessive: string,
   uiLocale: UiLocale,
+  displayNameFull: string,
 ): string {
   const thirdBlock =
     uiLocale === "ko"
-      ? koreanThirdPersonInstructionBlock(userName)
+      ? koreanThirdPersonInstructionBlock(displayNameFull, userName)
       : thirdPersonInstructionBlock(userName, pronounsLine, examplePossessive);
   const tagBlock = uiLocale === "ko" ? TAG_EXTRACTION_BLOCK_KO : TAG_EXTRACTION_BLOCK;
   const ackLang =
@@ -244,10 +283,11 @@ function buildManualSystemPrompt(
   examplePossessive: string,
   fixedCategory: KnownCategory,
   uiLocale: UiLocale,
+  displayNameFull: string,
 ): string {
   const thirdBlock =
     uiLocale === "ko"
-      ? koreanThirdPersonInstructionBlock(userName)
+      ? koreanThirdPersonInstructionBlock(displayNameFull, userName)
       : thirdPersonInstructionBlock(userName, pronounsLine, examplePossessive);
   const tagBlock = uiLocale === "ko" ? TAG_EXTRACTION_BLOCK_KO : TAG_EXTRACTION_BLOCK;
 
@@ -389,6 +429,7 @@ export async function POST(request: Request) {
 
   const uiLocale = normalizeUserLocale(auth.user.user_metadata?.ui_locale);
 
+  const displayNameFull = displayNameFromUser(auth.user);
   const userName = processingDisplayName(auth.user);
   const pronounsLine = pronounsLabelFromUser(auth.user);
   const examplePossessive = possessiveExample(userName);
@@ -422,6 +463,7 @@ export async function POST(request: Request) {
         examplePossessive,
         category,
         uiLocale,
+        displayNameFull,
       );
       const { ok, modelText } = await callAnthropicProcess(apiKey, system, originalText);
       if (!ok) {
@@ -458,7 +500,13 @@ export async function POST(request: Request) {
       return NextResponse.json(fallbackEntries(originalText));
     }
 
-    const system = buildAutoSystemPrompt(userName, pronounsLine, examplePossessive, uiLocale);
+    const system = buildAutoSystemPrompt(
+      userName,
+      pronounsLine,
+      examplePossessive,
+      uiLocale,
+      displayNameFull,
+    );
     debugProcess("Auto mode, input length:", originalText.length);
     const { ok, modelText } = await callAnthropicProcess(apiKey, system, originalText);
     if (!ok) {

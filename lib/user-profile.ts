@@ -74,6 +74,13 @@ export function greetingLineForUser(user: User): string {
   return "Welcome";
 }
 
+/** Raw profile display name (may be full Korean name, "Given Family", etc.). Used for Korean third-person rules. */
+export function displayNameFromUser(user: User): string {
+  const meta = user.user_metadata as Record<string, unknown> | undefined;
+  const dn = typeof meta?.display_name === "string" ? meta.display_name.trim() : "";
+  return dn;
+}
+
 /** Name used in third-person rewrite (first name from display, else email local part, else fallback). */
 export function processingDisplayName(user: User): string {
   const meta = user.user_metadata as Record<string, unknown> | undefined;
