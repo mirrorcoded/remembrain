@@ -52,43 +52,44 @@ export function categoryDisplayLabel(raw: string): string {
   return LEGACY_CATEGORY_LABELS[n] ?? (raw.trim() || "Other");
 }
 
-const BADGE_KNOWN: Record<KnownCategory, string> = {
-  health:
-    "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200",
-  relationships:
-    "bg-pink-100 text-pink-800 dark:bg-pink-900/40 dark:text-pink-200",
-  career:
-    "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-200",
-  logistics:
-    "bg-zinc-300 text-zinc-800 dark:bg-zinc-700 dark:text-zinc-100",
-  emotional:
-    "bg-violet-100 text-violet-800 dark:bg-violet-900/40 dark:text-violet-200",
-  finance:
-    "bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-100",
-  other: "bg-zinc-200 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200",
+/** Small accent dots on neutral category chips (subtle color coding). */
+const DOT_KNOWN: Record<KnownCategory, string> = {
+  health: "bg-[#16a34a]",
+  relationships: "bg-[#db2777]",
+  career: "bg-[#2563eb]",
+  logistics: "bg-[#64748b]",
+  emotional: "bg-[#7c3aed]",
+  finance: "bg-[#ca8a04]",
+  other: "bg-[#9ca3af]",
 };
 
-const BADGE_LEGACY =
-  "bg-zinc-200 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300";
+const DOT_LEGACY = "bg-[#9ca3af]";
 
+/** Category stats bars: differentiated by gray shades only. */
 const BAR_KNOWN: Record<KnownCategory, string> = {
-  health: "bg-emerald-500 dark:bg-emerald-400",
-  relationships: "bg-pink-500 dark:bg-pink-400",
-  career: "bg-blue-500 dark:bg-blue-400",
-  logistics: "bg-zinc-500 dark:bg-zinc-400",
-  emotional: "bg-violet-500 dark:bg-violet-400",
-  finance: "bg-amber-500 dark:bg-amber-400",
-  other: "bg-zinc-400 dark:bg-zinc-500",
+  health: "bg-[#262626]",
+  relationships: "bg-[#404040]",
+  career: "bg-[#525252]",
+  logistics: "bg-[#666666]",
+  emotional: "bg-[#737373]",
+  finance: "bg-[#808080]",
+  other: "bg-[#a3a3a3]",
 };
 
-const BAR_LEGACY = "bg-zinc-400 dark:bg-zinc-500";
+const BAR_LEGACY = "bg-[#a3a3a3]";
 
-export function categoryBadgeClass(category: string): string {
+export function categoryDotClass(category: string): string {
   const n = category.trim().toLowerCase();
   if (isKnownCategory(n)) {
-    return BADGE_KNOWN[n];
+    return DOT_KNOWN[n];
   }
-  return BADGE_LEGACY;
+  return DOT_LEGACY;
+}
+
+/** @deprecated Prefer CategoryBadge / CategoryFilterChip — neutral pill only. */
+export function categoryBadgeClass(category: string): string {
+  void category;
+  return "bg-[#f5f5f5] text-[#1a1a1a] ring-1 ring-black/[0.06] dark:bg-[#262626] dark:text-[#e5e5e5] dark:ring-white/10";
 }
 
 export function categoryBarFillClass(category: string): string {

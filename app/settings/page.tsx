@@ -391,7 +391,7 @@ export default function SettingsPage() {
         }
         const next = normalizeTagList(tags.map((t) => (t === fromTag ? toTag : t)));
         const id = (row as { id: number }).id;
-        let upErr = (
+        const upErr = (
           await supabase
             .from("entries")
             .update({ tags: next })
@@ -435,7 +435,7 @@ export default function SettingsPage() {
         }
         const next = normalizeTagList(tags.filter((t) => t !== tag));
         const id = (row as { id: number }).id;
-        let upErr = (
+        const upErr = (
           await supabase
             .from("entries")
             .update({ tags: next })
@@ -577,7 +577,7 @@ export default function SettingsPage() {
               <p className="text-sm text-red-700 dark:text-red-300">{profileError}</p>
             ) : null}
             {profileNotice ? (
-              <p className="text-sm text-emerald-800 dark:text-emerald-200">{profileNotice}</p>
+              <p className="text-sm text-[#4a4a4a] dark:text-[#a3a3a3]">{profileNotice}</p>
             ) : null}
             <button
               type="submit"
@@ -624,7 +624,7 @@ export default function SettingsPage() {
               <p className="text-sm text-red-700 dark:text-red-300">{passwordError}</p>
             ) : null}
             {passwordNotice ? (
-              <p className="text-sm text-emerald-800 dark:text-emerald-200">{passwordNotice}</p>
+              <p className="text-sm text-[#4a4a4a] dark:text-[#a3a3a3]">{passwordNotice}</p>
             ) : null}
             <button
               type="submit"
@@ -662,7 +662,7 @@ export default function SettingsPage() {
             </span>
           </p>
           {backupNotice ? (
-            <p className="text-sm text-emerald-800 dark:text-emerald-200">{backupNotice}</p>
+            <p className="text-sm text-[#4a4a4a] dark:text-[#a3a3a3]">{backupNotice}</p>
           ) : null}
           {backupError ? (
             <p className="text-sm text-red-700 dark:text-red-300">{backupError}</p>
@@ -742,7 +742,7 @@ export default function SettingsPage() {
               <span>{t("settings.statsExpanded")}</span>
             </label>
             {prefsNotice ? (
-              <p className="text-sm text-emerald-800 dark:text-emerald-200">{prefsNotice}</p>
+              <p className="text-sm text-[#4a4a4a] dark:text-[#a3a3a3]">{prefsNotice}</p>
             ) : null}
             <button
               type="submit"

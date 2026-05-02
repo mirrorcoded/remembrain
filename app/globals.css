@@ -1,8 +1,16 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --rb-black: #000000;
+  --rb-off-black: #1a1a1a;
+  --rb-muted: #4a4a4a;
+  --rb-border: #9ca3af;
+  --rb-hover: #f5f5f5;
+  --rb-page: #fafafa;
+  --rb-card: #ffffff;
+  --rb-input-border: #e5e5e5;
+  --background: var(--rb-page);
+  --foreground: var(--rb-black);
 }
 
 @theme inline {
@@ -14,18 +22,68 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --rb-page: #0a0a0a;
+    --rb-card: #141414;
+    --rb-hover: #1f1f1f;
+    --rb-input-border: #333333;
+    --foreground: #f5f5f5;
+    --background: var(--rb-page);
   }
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family:
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    "Helvetica Neue",
+    Arial,
+    sans-serif;
+  font-size: 15px;
+  line-height: 1.6;
 }
 
-@keyframes chat-message-enter {
+.rb-display {
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+
+.rb-heading {
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.rb-micro-label {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+@keyframes rb-chat-message-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.chat-message-enter {
+  animation: rb-chat-message-enter 0.2s ease-out both;
+}
+
+@keyframes rb-entry-enter {
   from {
     opacity: 0;
     transform: translateY(8px);
@@ -36,8 +94,76 @@ body {
   }
 }
 
-.chat-message-enter {
-  animation: chat-message-enter 0.2s ease-out both;
+.rb-entry-enter {
+  animation: rb-entry-enter 0.25s ease-out both;
+}
+
+@keyframes rb-entry-leave {
+  to {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+}
+
+.rb-entry-leaving {
+  animation: rb-entry-leave 0.2s ease-in both;
+}
+
+@keyframes rb-tab-pane-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.rb-tab-pane {
+  animation: rb-tab-pane-in 0.2s ease-out both;
+}
+
+@keyframes rb-modal-dialog-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.rb-modal-dialog {
+  animation: rb-modal-dialog-in 0.2s ease-out both;
+}
+
+@keyframes rb-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.rb-toast-banner {
+  animation: rb-toast-in 0.25s ease-out both;
+}
+
+.rb-btn-press:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.textarea-empty-inner:not(:focus):placeholder-shown {
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.045);
+}
+
+@media (prefers-color-scheme: dark) {
+  .textarea-empty-inner:not(:focus):placeholder-shown {
+    box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.04);
+  }
 }
 
 @keyframes chat-typing-dot {

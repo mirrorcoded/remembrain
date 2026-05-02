@@ -51,7 +51,7 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="flex min-h-full flex-col">
+      <body className="flex min-h-full flex-col bg-[#fafafa] text-black dark:bg-[#0a0a0a] dark:text-[#f5f5f5]">
         <Providers>{children}</Providers>
         <ServiceWorkerRegistration />
       </body>
