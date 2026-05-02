@@ -341,6 +341,12 @@ export default function Home() {
   const [chatInput, setChatInput] = useState("");
   const [isChatSending, setIsChatSending] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
+  /** Last completed fetch for `entriesSuggestionKey`; null means never loaded for current session baseline */
+  const [suggestedChatQuestions, setSuggestedChatQuestions] = useState<string[]>([]);
+  const [suggestedQuestionsLoadedKey, setSuggestedQuestionsLoadedKey] = useState<string | null>(
+    null,
+  );
+  const [suggestedQuestionsLoading, setSuggestedQuestionsLoading] = useState(false);
   const [entriesRefreshing, setEntriesRefreshing] = useState(false);
   const [chatHeaderRefreshing, setChatHeaderRefreshing] = useState(false);
   const [entriesPullPx, setEntriesPullPx] = useState(0);
@@ -499,6 +505,11 @@ export default function Home() {
     }
     return greetingLineForUser(session.user);
   }, [session]);
+
+  const entriesSuggestionKey = useMemo(
+    () => `${entries.length}:${entries[0]?.id ?? "none"}`,
+    [entries],
+  );
 
   const isFilterActive = searchQuery.trim().length > 0 || activeCategory !== "all";
 
@@ -902,6 +913,58 @@ export default function Home() {
   useEffect(() => {
     activeThreadIdRef.current = activeThreadId;
   }, [activeThreadId]);
+
+  const needsSuggestedQuestionsFetch =
+    activeTab === "chat" &&
+    Boolean(activeThreadId) &&
+    threadMessages.length === 0 &&
+    !threadMessagesLoading &&
+    !isChatSending &&
+    entries.length > 0 &&
+    suggestedQuestionsLoadedKey !== entriesSuggestionKey;
+
+  useEffect(() => {
+    if (!needsSuggestedQuestionsFetch) {
+      return;
+    }
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (!cancelled) {
+        setSuggestedQuestionsLoading(true);
+      }
+    });
+    void (async () => {
+      try {
+        const res = await fetch("/api/suggested-questions", {
+          method: "POST",
+          credentials: "same-origin",
+        });
+        const data = (await res.json()) as { questions?: unknown };
+        const raw = Array.isArray(data.questions) ? data.questions : [];
+        const qs = raw
+          .filter((q): q is string => typeof q === "string")
+          .map((q) => q.trim())
+          .filter((q) => q.length > 0)
+          .slice(0, 3);
+        if (!cancelled) {
+          setSuggestedChatQuestions(qs);
+          setSuggestedQuestionsLoadedKey(entriesSuggestionKey);
+        }
+      } catch {
+        if (!cancelled) {
+          setSuggestedChatQuestions([]);
+          setSuggestedQuestionsLoadedKey(entriesSuggestionKey);
+        }
+      } finally {
+        if (!cancelled) {
+          setSuggestedQuestionsLoading(false);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [needsSuggestedQuestionsFetch, entriesSuggestionKey]);
 
   function adjustChatComposerHeight() {
     const el = chatComposerRef.current;
@@ -2911,6 +2974,15 @@ export default function Home() {
                 !activeThreadId &&
                 !chatThreadsLoading &&
                 chatThreads.length === 0 &&
+                entries.length === 0 ? (
+                  <p className="px-2 py-10 text-center text-sm text-zinc-600 dark:text-zinc-400">
+                    Add some entries first, then come back to ask questions about your life.
+                  </p>
+                ) : null}
+                {!threadMessagesLoading &&
+                !activeThreadId &&
+                !chatThreadsLoading &&
+                chatThreads.length === 0 &&
                 entries.length > 0 ? (
                   <div className="flex flex-col items-center gap-3 py-10 text-center">
                     <p className="text-sm text-zinc-600 dark:text-zinc-400">
@@ -2929,25 +3001,45 @@ export default function Home() {
                 threadMessages.length === 0 &&
                 !isChatSending &&
                 !threadMessagesLoading &&
+                entries.length === 0 ? (
+                  <p className="px-2 py-6 text-center text-sm text-zinc-600 dark:text-zinc-400">
+                    Add some entries first, then come back to ask questions about your life.
+                  </p>
+                ) : null}
+                {activeThreadId &&
+                threadMessages.length === 0 &&
+                !isChatSending &&
+                !threadMessagesLoading &&
                 entries.length > 0 ? (
                   <div className="space-y-2 py-4">
-                    <p className="text-center text-sm text-zinc-500 dark:text-zinc-400">Try asking:</p>
-                    <div className="flex flex-col gap-2 sm:items-center">
-                      {[
-                        "When is Dan Bi's birthday?",
-                        "What meds am I on?",
-                        "Tell me about my career",
-                      ].map((q) => (
-                        <button
-                          key={q}
-                          type="button"
-                          onClick={() => handleSuggestedQuestion(q)}
-                          className="w-full max-w-md rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2.5 text-left text-sm text-zinc-800 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-200"
-                        >
-                          {q}
-                        </button>
-                      ))}
-                    </div>
+                    {suggestedQuestionsLoadedKey !== entriesSuggestionKey ||
+                    suggestedQuestionsLoading ? (
+                      <p className="text-center text-sm text-zinc-500 dark:text-zinc-400">
+                        Finding suggestions…
+                      </p>
+                    ) : suggestedChatQuestions.length > 0 ? (
+                      <>
+                        <p className="text-center text-sm text-zinc-500 dark:text-zinc-400">
+                          Try asking:
+                        </p>
+                        <div className="flex flex-col gap-2 sm:items-center">
+                          {suggestedChatQuestions.map((q, index) => (
+                            <button
+                              key={`${index}-${q.slice(0, 80)}`}
+                              type="button"
+                              onClick={() => handleSuggestedQuestion(q)}
+                              className="w-full max-w-md rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2.5 text-left text-sm text-zinc-800 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-200"
+                            >
+                              {q}
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    ) : (
+                      <p className="text-center text-sm text-zinc-600 dark:text-zinc-400">
+                        Ask a question below to get started.
+                      </p>
+                    )}
                   </div>
                 ) : null}
                 {threadMessages.map((message, index) => (
