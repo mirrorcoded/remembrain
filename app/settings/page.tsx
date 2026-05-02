@@ -24,10 +24,10 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 const BACKUP_APP_VERSION = "1.1";
 
 const inputClass =
-  "mt-1 w-full min-h-11 rounded-xl border border-zinc-300 bg-zinc-50 px-3 py-2 text-base outline-none transition focus:border-zinc-400 focus:ring-2 focus:ring-zinc-300 dark:border-zinc-700 dark:bg-zinc-950 dark:focus:border-zinc-500 dark:focus:ring-zinc-700";
+  "mt-1 w-full min-h-11 rounded-xl border border-[#1f1f1f] bg-[#0a0a0a] px-3 py-2 text-[15px] text-white outline-none transition focus:border-white focus:ring-0";
 
 const sectionClass =
-  "space-y-4 rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900";
+  "space-y-4 rounded-2xl border border-[#1f1f1f] bg-[#0a0a0a] p-5 shadow-sm";
 
 export default function SettingsPage() {
   const { t, locale, setUiLocale } = useI18n();
@@ -465,7 +465,7 @@ export default function SettingsPage() {
 
   if (!ready) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-zinc-100 dark:bg-zinc-950">
+      <div className="flex min-h-screen items-center justify-center bg-black">
         <p className="text-sm text-zinc-600 dark:text-zinc-400">{t("common.loading")}</p>
       </div>
     );
@@ -474,7 +474,7 @@ export default function SettingsPage() {
   const n = entryCount ?? 0;
 
   return (
-    <div className="min-h-screen bg-zinc-100 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
+    <div className="min-h-screen bg-black text-white">
       <main className="mx-auto flex w-full max-w-lg flex-col gap-6 px-4 py-8 sm:max-w-xl sm:px-6">
         <div className="flex items-center justify-between gap-3">
           <Link

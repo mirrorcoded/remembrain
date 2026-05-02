@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 
 const inputClass =
-  "mt-1 w-full min-h-11 rounded-xl border border-zinc-300 bg-zinc-50 px-3 py-2 text-base outline-none transition focus:border-zinc-400 focus:ring-2 focus:ring-zinc-300 dark:border-zinc-700 dark:bg-zinc-950 dark:focus:border-zinc-500 dark:focus:ring-zinc-700";
+  "mt-1 w-full min-h-11 rounded-xl border border-[#1f1f1f] bg-[#0a0a0a] px-3 py-2 text-[15px] text-white outline-none transition focus:border-white focus:ring-0";
 
 export default function ResetPasswordPage() {
   const router = useRouter();
@@ -113,22 +113,22 @@ export default function ResetPasswordPage() {
   }
 
   return (
-    <div className="min-h-screen bg-zinc-100 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
+    <div className="min-h-screen bg-black text-white">
       <main className="mx-auto flex w-full max-w-md flex-col gap-6 px-4 py-12 sm:px-6 sm:py-16">
         <header className="space-y-1 text-center">
-          <h1 className="text-2xl font-semibold tracking-tight">Remembrain</h1>
-          <p className="text-sm text-zinc-600 dark:text-zinc-400">Set a new password</p>
+          <h1 className="rb-display text-white">Remembrain</h1>
+          <p className="text-sm text-[#a3a3a3]">Set a new password</p>
         </header>
 
         {checkingSession ? (
-          <p className="text-center text-sm text-zinc-600 dark:text-zinc-400">Loading…</p>
+          <p className="text-center text-sm text-[#a3a3a3]">Loading…</p>
         ) : !sessionReady ? (
-          <div className="space-y-4 rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-            <p className="text-sm text-zinc-700 dark:text-zinc-300">{sessionMessage}</p>
+          <div className="space-y-4 rounded-2xl border border-[#1f1f1f] bg-[#0a0a0a] p-6 shadow-sm">
+            <p className="text-sm text-[#a3a3a3]">{sessionMessage}</p>
             <p className="text-center text-sm">
               <Link
                 href="/"
-                className="font-medium text-zinc-900 underline underline-offset-2 dark:text-zinc-100"
+                className="font-medium text-white underline underline-offset-2"
               >
                 Back to sign in
               </Link>
@@ -137,9 +137,9 @@ export default function ResetPasswordPage() {
         ) : (
           <form
             onSubmit={(event) => void handleSubmit(event)}
-            className="space-y-4 rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
+            className="space-y-4 rounded-2xl border border-[#1f1f1f] bg-[#0a0a0a] p-6 shadow-sm"
           >
-            <label className="block text-sm font-medium">
+            <label className="block text-sm font-medium text-[#a3a3a3]">
               New password
               <input
                 type="password"
@@ -155,7 +155,7 @@ export default function ResetPasswordPage() {
                 minLength={6}
               />
             </label>
-            <label className="block text-sm font-medium">
+            <label className="block text-sm font-medium text-[#a3a3a3]">
               Confirm new password
               <input
                 type="password"
@@ -173,13 +173,13 @@ export default function ResetPasswordPage() {
             </label>
 
             {formError ? (
-              <p className="text-sm text-red-700 dark:text-red-300">{formError}</p>
+              <p className="text-sm text-red-400">{formError}</p>
             ) : null}
 
             <button
               type="submit"
               disabled={busy}
-              className="w-full min-h-11 rounded-xl bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+              className="w-full min-h-11 rounded-xl bg-white px-4 py-2.5 text-sm font-medium text-black transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {busy ? "Please wait…" : "Update password"}
             </button>

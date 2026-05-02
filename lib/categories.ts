@@ -52,31 +52,31 @@ export function categoryDisplayLabel(raw: string): string {
   return LEGACY_CATEGORY_LABELS[n] ?? (raw.trim() || "Other");
 }
 
-/** Small accent dots on neutral category chips (subtle color coding). */
+/** Accent dots — slightly brighter on pure black UI. */
 const DOT_KNOWN: Record<KnownCategory, string> = {
-  health: "bg-[#16a34a]",
-  relationships: "bg-[#db2777]",
-  career: "bg-[#2563eb]",
-  logistics: "bg-[#64748b]",
-  emotional: "bg-[#7c3aed]",
-  finance: "bg-[#ca8a04]",
-  other: "bg-[#9ca3af]",
+  health: "bg-[#4ade80]",
+  relationships: "bg-[#fb7185]",
+  career: "bg-[#60a5fa]",
+  logistics: "bg-[#94a3b8]",
+  emotional: "bg-[#c084fc]",
+  finance: "bg-[#fbbf24]",
+  other: "bg-[#cbd5e1]",
 };
 
-const DOT_LEGACY = "bg-[#9ca3af]";
+const DOT_LEGACY = "bg-[#cbd5e1]";
 
-/** Category stats bars: differentiated by gray shades only. */
+/** Category stats bars: gray ramp readable on dark track. */
 const BAR_KNOWN: Record<KnownCategory, string> = {
-  health: "bg-[#262626]",
-  relationships: "bg-[#404040]",
-  career: "bg-[#525252]",
-  logistics: "bg-[#666666]",
-  emotional: "bg-[#737373]",
-  finance: "bg-[#808080]",
+  health: "bg-[#6b6b6b]",
+  relationships: "bg-[#737373]",
+  career: "bg-[#808080]",
+  logistics: "bg-[#8a8a8a]",
+  emotional: "bg-[#949494]",
+  finance: "bg-[#9ca3a3]",
   other: "bg-[#a3a3a3]",
 };
 
-const BAR_LEGACY = "bg-[#a3a3a3]";
+const BAR_LEGACY = "bg-[#a8a8a8]";
 
 export function categoryDotClass(category: string): string {
   const n = category.trim().toLowerCase();
@@ -89,7 +89,7 @@ export function categoryDotClass(category: string): string {
 /** @deprecated Prefer CategoryBadge / CategoryFilterChip — neutral pill only. */
 export function categoryBadgeClass(category: string): string {
   void category;
-  return "bg-[#f5f5f5] text-[#1a1a1a] ring-1 ring-black/[0.06] dark:bg-[#262626] dark:text-[#e5e5e5] dark:ring-white/10";
+  return "bg-[#1f1f1f] text-[#a3a3a3] ring-1 ring-white/10";
 }
 
 export function categoryBarFillClass(category: string): string {

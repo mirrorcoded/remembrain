@@ -2093,22 +2093,22 @@ export default function Home() {
 
   if (!authHydrated) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#fafafa] text-black dark:bg-[#0a0a0a] dark:text-[#f5f5f5]">
-        <p className="text-[13px] text-[#9ca3af]">{t("common.loading")}</p>
+      <div className="flex min-h-screen items-center justify-center bg-black text-white">
+        <p className="text-[13px] text-[#a3a3a3]">{t("common.loading")}</p>
       </div>
     );
   }
 
   if (!session) {
     const authInputClass =
-      "mt-1 w-full min-h-11 rounded-xl border border-[#e5e5e5] bg-white px-[14px] py-2 text-[15px] text-black outline-none transition focus:border-black focus:ring-0 dark:border-[#333] dark:bg-[#141414] dark:text-[#f5f5f5] dark:focus:border-white";
+      "mt-1 w-full min-h-11 rounded-xl border border-[#1f1f1f] bg-[#0a0a0a] px-[14px] py-2 text-[15px] text-white outline-none transition focus:border-white focus:ring-0";
 
     return (
-      <div className="min-h-screen bg-[#fafafa] text-black dark:bg-[#0a0a0a] dark:text-[#f5f5f5]">
+      <div className="min-h-screen bg-black text-white">
         <main className="mx-auto flex w-full max-w-md flex-col gap-8 px-4 py-12 sm:px-6 sm:py-16">
           <header className="space-y-1 text-center">
-            <h1 className="rb-display text-black dark:text-white">Remembrain</h1>
-            <p className="text-[13px] text-[#9ca3af]">
+            <h1 className="rb-display text-white">Remembrain</h1>
+            <p className="text-[13px] text-[#a3a3a3]">
               {authView === "forgotPassword" ? t("common.forgotIntro") : t("common.signInTitle")}
             </p>
           </header>
@@ -2116,9 +2116,9 @@ export default function Home() {
           {authView === "forgotPassword" ? (
             <form
               onSubmit={(event) => void handleForgotPasswordSubmit(event)}
-              className="space-y-4 rounded-2xl border border-[#e5e5e5] bg-white p-6 shadow-sm dark:border-[#262626] dark:bg-[#141414]"
+              className="space-y-4 rounded-2xl border border-[#1f1f1f] bg-[#0a0a0a] p-6 shadow-sm"
             >
-              <label className="block text-sm font-medium">
+              <label className="block text-sm font-medium text-[#a3a3a3]">
                 {t("common.email")}
                 <input
                   type="email"
@@ -2133,16 +2133,16 @@ export default function Home() {
               </label>
 
               {authError ? (
-                <p className="text-sm text-red-700 dark:text-red-300">{authError}</p>
+                <p className="text-sm text-red-400">{authError}</p>
               ) : null}
               {authNotice ? (
-                <p className="text-sm text-[#4a4a4a] dark:text-[#a3a3a3]">{authNotice}</p>
+                <p className="text-sm text-[#a3a3a3]">{authNotice}</p>
               ) : null}
 
               <button
                 type="submit"
                 disabled={authBusy}
-                className="rb-btn-press w-full min-h-11 rounded-xl bg-black px-4 py-2.5 text-sm font-medium text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-white dark:text-black dark:hover:opacity-90"
+                className="rb-btn-press w-full min-h-11 rounded-xl bg-white px-4 py-2.5 text-sm font-medium text-black transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {authBusy ? t("common.pleaseWait") : t("common.sendResetEmail")}
               </button>
@@ -2150,7 +2150,7 @@ export default function Home() {
               <p className="text-center text-sm">
                 <button
                   type="button"
-                  className="font-medium text-zinc-900 underline underline-offset-2 dark:text-zinc-100"
+                  className="font-medium text-white underline underline-offset-2"
                   onClick={() => {
                     setAuthView("credentials");
                     setAuthError(null);
@@ -2164,9 +2164,9 @@ export default function Home() {
           ) : (
             <form
               onSubmit={(event) => void handleAuthSubmit(event)}
-              className="space-y-4 rounded-2xl border border-[#e5e5e5] bg-white p-6 shadow-sm dark:border-[#262626] dark:bg-[#141414]"
+              className="space-y-4 rounded-2xl border border-[#1f1f1f] bg-[#0a0a0a] p-6 shadow-sm"
             >
-              <label className="block text-sm font-medium">
+              <label className="block text-sm font-medium text-[#a3a3a3]">
                 {t("common.email")}
                 <input
                   type="email"
@@ -2179,7 +2179,7 @@ export default function Home() {
                   required
                 />
               </label>
-              <label className="block text-sm font-medium">
+              <label className="block text-sm font-medium text-[#a3a3a3]">
                 {t("common.password")}
                 <input
                   type="password"
@@ -2195,7 +2195,7 @@ export default function Home() {
                 />
               </label>
               {authMode === "signUp" ? (
-                <label className="block text-sm font-medium">
+                <label className="block text-sm font-medium text-[#a3a3a3]">
                   {t("common.confirmPassword")}
                   <input
                     type="password"
@@ -2213,16 +2213,16 @@ export default function Home() {
               ) : null}
 
               {authError ? (
-                <p className="text-sm text-red-700 dark:text-red-300">{authError}</p>
+                <p className="text-sm text-red-400">{authError}</p>
               ) : null}
               {authNotice ? (
-                <p className="text-sm text-[#4a4a4a] dark:text-[#a3a3a3]">{authNotice}</p>
+                <p className="text-sm text-[#a3a3a3]">{authNotice}</p>
               ) : null}
 
               <button
                 type="submit"
                 disabled={authBusy}
-                className="rb-btn-press w-full min-h-11 rounded-xl bg-black px-4 py-2.5 text-sm font-medium text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-white dark:text-black dark:hover:opacity-90"
+                className="rb-btn-press w-full min-h-11 rounded-xl bg-white px-4 py-2.5 text-sm font-medium text-black transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {authBusy
                   ? t("common.pleaseWait")
@@ -2235,7 +2235,7 @@ export default function Home() {
                 <p className="text-center text-sm">
                   <button
                     type="button"
-                    className="text-zinc-600 underline-offset-2 hover:text-zinc-900 hover:underline dark:text-zinc-400 dark:hover:text-zinc-100"
+                    className="text-[#a3a3a3] underline-offset-2 hover:text-white hover:underline"
                     onClick={() => {
                       setAuthView("forgotPassword");
                       setAuthError(null);
@@ -2247,11 +2247,11 @@ export default function Home() {
                 </p>
               ) : null}
 
-              <p className="text-center text-sm text-zinc-600 dark:text-zinc-400">
+              <p className="text-center text-sm text-[#a3a3a3]">
                 {authMode === "signUp" ? t("common.haveAccount") : t("common.needAccount")}{" "}
                 <button
                   type="button"
-                  className="font-medium text-zinc-900 underline underline-offset-2 dark:text-zinc-100"
+                  className="font-medium text-white underline underline-offset-2"
                   onClick={() => {
                     setAuthMode((mode) => (mode === "signUp" ? "signIn" : "signUp"));
                     setAuthError(null);
@@ -2270,37 +2270,41 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen bg-[#fafafa] text-black dark:bg-[#0a0a0a] dark:text-[#f5f5f5]">
+    <div className="min-h-screen bg-black text-white">
       <main className="mx-auto flex w-full max-w-6xl flex-col px-4 pb-10 pt-4 sm:px-6">
         <header className="mb-8 flex flex-wrap items-start justify-between gap-4 sm:mb-8">
           <div className="space-y-2">
-            <h1 className="rb-display text-black dark:text-white">Remembrain</h1>
-            <p className="text-[13px] font-normal text-[#9ca3af]">{greetingLine}</p>
-            <p className="text-[15px] leading-relaxed text-[#4a4a4a] dark:text-[#a3a3a3]">
+            <h1 className="rb-display text-white">Remembrain</h1>
+            <p className="text-[13px] font-normal text-[#a3a3a3]">{greetingLine}</p>
+            <p className="text-[15px] leading-relaxed text-[#a3a3a3]">
               {t("common.captureSubtitle")}
             </p>
           </div>
           <div className="flex shrink-0 flex-wrap items-center gap-2">
             <Link
               href="/settings"
-              className="rb-btn-press inline-flex h-10 min-w-10 items-center justify-center rounded-full border border-[#e5e5e5] bg-white px-3 text-[#1a1a1a] transition hover:bg-[#f5f5f5] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-black dark:border-[#333] dark:bg-[#141414] dark:text-[#f5f5f5] dark:hover:bg-[#1f1f1f] dark:focus-visible:outline-white"
+              className="rb-btn-press inline-flex h-10 min-w-10 items-center justify-center rounded-full border border-[#1f1f1f] bg-[#0a0a0a] px-3 text-white transition hover:bg-[#111111] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
               aria-label={t("common.settings")}
               title={t("common.settings")}
             >
-              <IconGear className="text-[#4a4a4a] dark:text-[#a3a3a3]" />
+              <IconGear className="text-[#a3a3a3]" />
             </Link>
           </div>
         </header>
 
-        <div className="sticky top-0 z-[60] -mx-4 mb-8 border-b border-[#e5e5e5] bg-[#fafafa]/95 pb-3 pt-2 backdrop-blur-md supports-[backdrop-filter]:bg-[#fafafa]/88 dark:border-[#262626] dark:bg-[#0a0a0a]/95 dark:supports-[backdrop-filter]:bg-[#0a0a0a]/88 sm:-mx-6 sm:mb-8 sm:px-6 sm:pb-4 sm:pt-3">
+        <div
+          className={`sticky top-0 z-[60] -mx-4 mb-8 border-b border-[#1f1f1f] bg-black/95 pb-3 pt-2 backdrop-blur-md supports-[backdrop-filter]:bg-black/90 sm:-mx-6 sm:mb-8 sm:px-6 sm:pb-4 sm:pt-3 max-lg:transition-opacity ${
+            activeTab === "chat" && chatSidebarOpen && isMobileViewport ? "max-lg:hidden" : ""
+          }`}
+        >
           <div className="grid w-full grid-cols-2 gap-3 px-4 sm:gap-3 sm:px-0">
             <button
               type="button"
               onClick={() => handleTabChange("entries")}
-              className={`rb-btn-press min-h-[3rem] rounded-xl px-3 py-3 text-center text-[15px] font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-black dark:focus-visible:outline-white sm:min-h-[3.25rem] sm:px-5 sm:text-[15px] ${
+              className={`rb-btn-press min-h-[3rem] rounded-xl px-3 py-3 text-center text-[15px] font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white sm:min-h-[3.25rem] sm:px-5 sm:text-[15px] ${
                 activeTab === "entries"
-                  ? "bg-black text-white shadow-[0_1px_8px_rgba(0,0,0,0.12)] dark:bg-white dark:text-black"
-                  : "border border-[#e5e5e5] bg-white text-[#1a1a1a] hover:bg-[#f5f5f5] dark:border-[#333] dark:bg-[#141414] dark:text-[#e5e5e5] dark:hover:bg-[#1f1f1f]"
+                  ? "bg-white text-black shadow-[0_1px_12px_rgba(255,255,255,0.08)]"
+                  : "border border-[#1f1f1f] bg-[#0a0a0a] text-white hover:bg-[#111111]"
               }`}
             >
               {t("common.entriesTab")}
@@ -2308,10 +2312,10 @@ export default function Home() {
             <button
               type="button"
               onClick={() => handleTabChange("chat")}
-              className={`rb-btn-press min-h-[3rem] rounded-xl px-3 py-3 text-center text-[15px] font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-black dark:focus-visible:outline-white sm:min-h-[3.25rem] sm:px-5 sm:text-[15px] ${
+              className={`rb-btn-press min-h-[3rem] rounded-xl px-3 py-3 text-center text-[15px] font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white sm:min-h-[3.25rem] sm:px-5 sm:text-[15px] ${
                 activeTab === "chat"
-                  ? "bg-black text-white shadow-[0_1px_8px_rgba(0,0,0,0.12)] dark:bg-white dark:text-black"
-                  : "border border-[#e5e5e5] bg-white text-[#1a1a1a] hover:bg-[#f5f5f5] dark:border-[#333] dark:bg-[#141414] dark:text-[#e5e5e5] dark:hover:bg-[#1f1f1f]"
+                  ? "bg-white text-black shadow-[0_1px_12px_rgba(255,255,255,0.08)]"
+                  : "border border-[#1f1f1f] bg-[#0a0a0a] text-white hover:bg-[#111111]"
               }`}
             >
               {t("common.chatTab")}
@@ -2324,10 +2328,10 @@ export default function Home() {
           <>
             <form
               onSubmit={handleSave}
-              className="flex max-h-[min(92dvh,900px)] flex-col overflow-hidden rounded-2xl border border-[#e5e5e5] bg-white shadow-sm dark:border-[#262626] dark:bg-[#141414]"
+              className="flex max-h-[min(92dvh,900px)] flex-col overflow-hidden rounded-2xl border border-[#1f1f1f] bg-[#0a0a0a] shadow-sm"
             >
               <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5 sm:p-6">
-                <label htmlFor="entry" className="rb-heading block text-black dark:text-white">
+                <label htmlFor="entry" className="rb-heading block text-white">
                   {t("common.newJournalEntry")}
                 </label>
                 <div className="relative">
@@ -2336,7 +2340,7 @@ export default function Home() {
                     value={text}
                     onChange={(event) => setText(event.target.value)}
                     placeholder={t("common.placeholderEntry")}
-                    className="textarea-empty-inner max-h-[min(40vh,280px)] min-h-[8rem] w-full resize-none overflow-y-auto rounded-xl border border-[#e5e5e5] bg-white px-[14px] py-[14px] pr-16 text-[15px] leading-relaxed text-black outline-none transition focus:border-black focus:ring-0 dark:border-[#333] dark:bg-[#0a0a0a] dark:text-[#f5f5f5] dark:focus:border-white"
+                    className="textarea-empty-inner max-h-[min(40vh,280px)] min-h-[8rem] w-full resize-none overflow-y-auto rounded-xl border border-[#1f1f1f] bg-[#0a0a0a] px-[14px] py-[14px] pr-16 text-[15px] leading-relaxed text-white outline-none transition focus:border-white focus:ring-0"
                   />
                   {isMounted && isSpeechSupported ? (
                     <button
@@ -2352,7 +2356,7 @@ export default function Home() {
                       className={`rb-btn-press absolute bottom-[14px] right-[14px] inline-flex h-8 min-h-8 min-w-8 items-center justify-center rounded-full px-2 text-[11px] font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${
                         isListening
                           ? "animate-pulse bg-red-600 text-white hover:bg-red-500"
-                          : "border border-[#e5e5e5] bg-[#f5f5f5] text-[#4a4a4a] hover:bg-[#ebebeb] dark:border-[#333] dark:bg-[#262626] dark:text-[#a3a3a3] dark:hover:bg-[#333]"
+                          : "border border-[#1f1f1f] bg-[#1f1f1f] text-[#a3a3a3] hover:bg-[#2a2a2a]"
                       }`}
                     >
                       {isListening ? t("common.listening") : t("common.mic")}
@@ -2360,18 +2364,18 @@ export default function Home() {
                   ) : null}
                 </div>
                 {speechErrorMessage ? (
-                  <p className="text-sm text-red-700 dark:text-red-300">{speechErrorMessage}</p>
+                  <p className="text-sm text-red-400">{speechErrorMessage}</p>
                 ) : null}
-                <div className="space-y-2 border-t border-[#e5e5e5] pt-6 dark:border-[#262626]">
-                  <p className="rb-micro-label text-[#9ca3af]">{t("common.category")}</p>
+                <div className="space-y-2 border-t border-[#1f1f1f] pt-6">
+                  <p className="rb-micro-label text-[#6b6b6b]">{t("common.category")}</p>
                   <div className="flex flex-wrap gap-2">
                     <button
                       type="button"
                       onClick={() => setNewEntryCategorySelection("auto")}
                       className={`rb-btn-press rounded-full px-2.5 py-[5px] text-[11px] font-medium transition ${
                         newEntryCategorySelection === "auto"
-                          ? "bg-black text-white dark:bg-white dark:text-black"
-                          : "bg-[#f5f5f5] text-[#1a1a1a] hover:bg-[#ebebeb] dark:bg-[#262626] dark:text-[#e5e5e5] dark:hover:bg-[#333]"
+                          ? "bg-white text-black"
+                          : "border border-[#1f1f1f] bg-[#0a0a0a] text-white hover:bg-[#111111]"
                       }`}
                     >
                       {t("common.auto")}
@@ -2388,10 +2392,10 @@ export default function Home() {
                   </div>
                 </div>
               </div>
-              <div className="sticky bottom-0 z-10 shrink-0 border-t border-[#e5e5e5] bg-white px-5 pb-[max(12px,env(safe-area-inset-bottom))] pt-4 dark:border-[#262626] dark:bg-[#141414] sm:px-6">
+              <div className="sticky bottom-0 z-10 shrink-0 border-t border-[#1f1f1f] bg-[#0a0a0a] px-5 pb-[max(12px,env(safe-area-inset-bottom))] pt-4 sm:px-6">
                 <button
                   type="submit"
-                  className="rb-btn-press w-full min-h-12 scroll-mt-4 rounded-xl bg-black px-4 py-3 text-[15px] font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-white dark:text-black dark:hover:opacity-90"
+                  className="rb-btn-press w-full min-h-12 scroll-mt-4 rounded-xl bg-white px-4 py-3 text-[15px] font-semibold text-black transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
                   disabled={!text.trim()}
                   aria-live="polite"
                 >
@@ -2400,13 +2404,13 @@ export default function Home() {
               </div>
             </form>
 
-        <section className="rounded-2xl border border-[#e5e5e5] bg-white p-5 shadow-sm dark:border-[#262626] dark:bg-[#141414] sm:p-6">
+        <section className="rounded-2xl border border-[#1f1f1f] bg-[#0a0a0a] p-5 shadow-sm sm:p-6">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 className="rb-heading text-black dark:text-white">{t("common.stats")}</h2>
+            <h2 className="rb-heading text-white">{t("common.stats")}</h2>
             <button
               type="button"
               onClick={() => setStatsExpanded((open) => !open)}
-              className="rb-btn-press rounded-lg border border-[#e5e5e5] bg-[#f5f5f5] px-3 py-1.5 text-[11px] font-medium uppercase tracking-wide text-[#1a1a1a] transition hover:bg-[#ebebeb] dark:border-[#333] dark:bg-[#262626] dark:text-[#e5e5e5] dark:hover:bg-[#333]"
+              className="rb-btn-press rounded-lg border border-[#1f1f1f] bg-[#111111] px-3 py-1.5 text-[11px] font-medium uppercase tracking-wide text-[#a3a3a3] transition hover:bg-[#1f1f1f]"
             >
               {statsExpanded ? t("common.hideStats") : t("common.showStats")}
             </button>
@@ -2414,22 +2418,22 @@ export default function Home() {
           {statsExpanded ? (
             <div className="mt-6 space-y-8">
               <div>
-                <p className="rb-micro-label text-[#9ca3af]">{t("common.statsTotalLabel")}</p>
+                <p className="rb-micro-label text-[#6b6b6b]">{t("common.statsTotalLabel")}</p>
                 <p className="mt-1 text-4xl font-semibold tabular-nums tracking-tight">
                   {entries.length}
                 </p>
               </div>
 
               <div>
-                <p className="rb-micro-label mb-3 text-[#9ca3af]">{t("common.statsByCategory")}</p>
+                <p className="rb-micro-label mb-3 text-[#6b6b6b]">{t("common.statsByCategory")}</p>
                 <div className="space-y-2">
                   {statsCategoryRows.map(({ key, label, count, barClass }) => (
                     <div key={key} className="flex items-center gap-2 text-xs">
-                      <span className="w-[7.5rem] shrink-0 truncate text-zinc-600 dark:text-zinc-400">
+                      <span className="w-[7.5rem] shrink-0 truncate text-[#a3a3a3]">
                         {label}
                       </span>
                       <div className="flex min-w-0 flex-1 items-center gap-2">
-                        <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-[#f5f5f5] dark:bg-[#262626]">
+                        <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-[#1f1f1f]">
                           <div
                             className={`h-full rounded-full ${barClass}`}
                             style={{
@@ -2440,7 +2444,7 @@ export default function Home() {
                             }}
                           />
                         </div>
-                        <span className="w-7 shrink-0 text-right tabular-nums text-zinc-600 dark:text-zinc-300">
+                        <span className="w-7 shrink-0 text-right tabular-nums text-[#a3a3a3]">
                           {count}
                         </span>
                       </div>
@@ -2450,9 +2454,9 @@ export default function Home() {
               </div>
 
               <div>
-                <p className="rb-micro-label mb-2 text-[#9ca3af]">{t("common.statsLast30")}</p>
+                <p className="rb-micro-label mb-2 text-[#6b6b6b]">{t("common.statsLast30")}</p>
                 <div className="flex gap-3">
-                  <div className="flex shrink-0 flex-col justify-between pb-5 pt-1 text-right text-[10px] tabular-nums text-zinc-500 dark:text-zinc-400">
+                  <div className="flex shrink-0 flex-col justify-between pb-5 pt-1 text-right text-[10px] tabular-nums text-[#6b6b6b]">
                     <span>{statsDailyMax}</span>
                     <span>0</span>
                   </div>
@@ -2466,7 +2470,7 @@ export default function Home() {
                         >
                           <div className="relative flex h-24 w-full flex-col justify-end">
                             <div
-                              className={`w-full rounded-t ${day.count > 0 ? "bg-zinc-800 dark:bg-zinc-200" : "bg-transparent"}`}
+                              className={`w-full rounded-t ${day.count > 0 ? "bg-[#a3a3a3]" : "bg-transparent"}`}
                               style={{
                                 height:
                                   statsDailyMax > 0
@@ -2479,7 +2483,7 @@ export default function Home() {
                         </div>
                       ))}
                     </div>
-                    <div className="flex flex-row gap-px pt-1 text-[10px] leading-none text-zinc-500 dark:text-zinc-400">
+                    <div className="flex flex-row gap-px pt-1 text-[10px] leading-none text-[#6b6b6b]">
                       {statsLast30Days.map((day) => (
                         <span key={`${day.ymd}-label`} className="min-w-[8px] flex-1 text-center">
                           {day.dayLabel}
@@ -2494,14 +2498,14 @@ export default function Home() {
         </section>
 
         <section className="space-y-3">
-          <h2 className="rb-heading text-black dark:text-white">{t("common.savedEntries")}</h2>
+          <h2 className="rb-heading text-white">{t("common.savedEntries")}</h2>
           {saveNoticeMessage ? (
-            <p className="rb-toast-banner rounded-2xl border border-[#e5e5e5] bg-[#f5f5f5] p-3 text-sm text-[#1a1a1a] dark:border-[#333] dark:bg-[#1f1f1f] dark:text-[#e5e5e5]">
+            <p className="rb-toast-banner rounded-2xl border border-[#1f1f1f] bg-[#111111] p-3 text-sm text-[#a3a3a3]">
               {saveNoticeMessage}
             </p>
           ) : null}
           {errorMessage ? (
-            <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900/70 dark:bg-red-950/30 dark:text-red-200">
+            <div className="rounded-2xl border border-red-900/40 bg-red-950/25 p-4 text-sm text-red-300">
               <p>{errorMessage}</p>
               {saveRetryDraft != null ? (
                 <button
@@ -2511,7 +2515,7 @@ export default function Home() {
                     setErrorMessage(null);
                     setSaveRetryDraft(null);
                   }}
-                  className="mt-3 rounded-lg border border-red-300 bg-white px-3 py-1.5 text-xs font-medium text-red-800 transition hover:bg-red-50 dark:border-red-800 dark:bg-zinc-900 dark:text-red-200 dark:hover:bg-zinc-800"
+                  className="mt-3 rounded-lg border border-red-800/50 bg-[#111111] px-3 py-1.5 text-xs font-medium text-red-300 transition hover:bg-[#1f1f1f]"
                 >
                   {t("common.retry")}
                 </button>
@@ -2519,30 +2523,30 @@ export default function Home() {
             </div>
           ) : null}
           {isLoading ? (
-            <p className="rounded-2xl border border-dashed border-[#e5e5e5] bg-white p-5 text-[15px] text-[#4a4a4a] dark:border-[#333] dark:bg-[#141414] dark:text-[#a3a3a3] sm:p-6">
+            <p className="rounded-2xl border border-dashed border-[#1f1f1f] bg-[#0a0a0a] p-5 text-[15px] text-[#a3a3a3] sm:p-6">
               {t("common.loadingEntries")}
             </p>
           ) : entries.length === 0 ? (
-            <div className="flex flex-col items-center gap-4 rounded-2xl border border-dashed border-[#e5e5e5] bg-white px-6 py-12 text-center dark:border-[#333] dark:bg-[#141414]">
+            <div className="flex flex-col items-center gap-4 rounded-2xl border border-dashed border-[#1f1f1f] bg-[#0a0a0a] px-6 py-12 text-center">
               <IconNotebookEmpty className="shrink-0 opacity-90" />
               <div className="space-y-2">
-                <p className="rb-heading text-black dark:text-white">{t("common.emptyEntriesTitle")}</p>
-                <p className="max-w-sm text-[15px] leading-relaxed text-[#4a4a4a] dark:text-[#a3a3a3]">
+                <p className="rb-heading text-white">{t("common.emptyEntriesTitle")}</p>
+                <p className="max-w-sm text-[15px] leading-relaxed text-[#a3a3a3]">
                   {t("common.emptyEntriesSubtitle")}
                 </p>
               </div>
             </div>
           ) : (
             <>
-              <div className="space-y-3 rounded-2xl border border-[#e5e5e5] bg-white p-5 shadow-sm dark:border-[#262626] dark:bg-[#141414] sm:p-6">
+              <div className="space-y-3 rounded-2xl border border-[#1f1f1f] bg-[#0a0a0a] p-5 shadow-sm sm:p-6">
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                  <label htmlFor="entry-search" className="block text-[15px] font-medium text-black dark:text-white">
+                  <label htmlFor="entry-search" className="block text-[15px] font-medium text-white">
                     {t("common.searchEntries")}
                   </label>
                   <button
                     type="button"
                     onClick={() => setIsExportModalOpen(true)}
-                    className="rb-btn-press rounded-lg border border-[#e5e5e5] bg-[#f5f5f5] px-3 py-1.5 text-[11px] font-medium uppercase tracking-wide text-[#1a1a1a] transition hover:bg-[#ebebeb] dark:border-[#333] dark:bg-[#262626] dark:text-[#e5e5e5] dark:hover:bg-[#333]"
+                    className="rb-btn-press rounded-lg border border-[#1f1f1f] bg-[#111111] px-3 py-1.5 text-[11px] font-medium uppercase tracking-wide text-[#a3a3a3] transition hover:bg-[#1f1f1f]"
                   >
                     {t("common.export")}
                   </button>
@@ -2553,7 +2557,7 @@ export default function Home() {
                   value={searchQuery}
                   onChange={(event) => setSearchQuery(event.target.value)}
                   placeholder={t("common.searchPlaceholder")}
-                  className="w-full rounded-xl border border-[#e5e5e5] bg-white px-[14px] py-[14px] text-[15px] text-black outline-none transition focus:border-black focus:ring-0 dark:border-[#333] dark:bg-[#0a0a0a] dark:text-[#f5f5f5] dark:focus:border-white"
+                  className="w-full rounded-xl border border-[#1f1f1f] bg-[#0a0a0a] px-[14px] py-[14px] text-[15px] text-white outline-none transition focus:border-white focus:ring-0"
                 />
                 <div className="flex flex-wrap gap-2">
                   <button
@@ -2561,8 +2565,8 @@ export default function Home() {
                     onClick={() => setActiveCategory("all")}
                     className={`rb-btn-press rounded-full px-2.5 py-[5px] text-[11px] font-medium transition ${
                       activeCategory === "all"
-                        ? "bg-black text-white dark:bg-white dark:text-black"
-                        : "bg-[#f5f5f5] text-[#1a1a1a] hover:bg-[#ebebeb] dark:bg-[#262626] dark:text-[#e5e5e5] dark:hover:bg-[#333]"
+                        ? "bg-white text-black"
+                          : "border border-[#1f1f1f] bg-[#0a0a0a] text-white hover:bg-[#111111]"
                     }`}
                   >
                     {t("common.all")}
@@ -2580,14 +2584,14 @@ export default function Home() {
                 {tagFrequencyList.length > 0 ? (
                   <div className="space-y-2">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="rb-micro-label text-[#9ca3af]">
+                      <p className="rb-micro-label text-[#6b6b6b]">
                         {t("common.tagsCount", { count: tagFrequencyList.length })}
                       </p>
                       {activeTagFilters.length > 0 ? (
                         <button
                           type="button"
                           onClick={() => setActiveTagFilters([])}
-                          className="text-xs font-medium text-zinc-600 underline-offset-2 hover:underline dark:text-zinc-400"
+                          className="text-xs font-medium text-[#a3a3a3] underline-offset-2 hover:underline hover:text-white"
                         >
                           {t("common.clearTags")}
                         </button>
@@ -2605,8 +2609,8 @@ export default function Home() {
                             onClick={() => toggleTagFilter(tag)}
                             className={`rb-btn-press shrink-0 rounded-full px-1.5 py-[3px] text-[11px] font-normal lowercase tracking-normal transition ${
                               selected
-                                ? "bg-black text-white dark:bg-white dark:text-black"
-                                : "border border-transparent bg-[#f5f5f5] text-[#1a1a1a] hover:bg-[#ebebeb] dark:bg-[#262626] dark:text-[#e5e5e5] dark:hover:bg-[#333]"
+                                ? "bg-white text-black"
+                                : "bg-[#1f1f1f] text-[#a3a3a3] hover:bg-[#2a2a2a]"
                             }`}
                           >
                             {tag.toLowerCase()}
@@ -2617,7 +2621,7 @@ export default function Home() {
                     </div>
                   </div>
                 ) : null}
-                <p className="text-[13px] text-[#9ca3af]">
+                <p className="text-[13px] text-[#a3a3a3]">
                   {t("common.showingCount", {
                     filtered: filteredEntries.length,
                     total: entries.length,
@@ -2632,8 +2636,8 @@ export default function Home() {
                   disabled={entries.length === 0}
                   className={`rb-btn-press min-h-10 shrink-0 rounded-xl border px-4 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
                     entriesSelectMode
-                      ? "border-black bg-black text-white dark:border-white dark:bg-white dark:text-black"
-                      : "border-[#e5e5e5] bg-white text-black hover:bg-[#f5f5f5] dark:border-[#333] dark:bg-[#141414] dark:text-[#f5f5f5] dark:hover:bg-[#1f1f1f]"
+                      ? "border-white bg-white text-black"
+                      : "border-[#1f1f1f] bg-[#0a0a0a] text-white hover:bg-[#111111]"
                   }`}
                 >
                   {entriesSelectMode ? t("common.cancel") : t("common.select")}
@@ -2641,15 +2645,15 @@ export default function Home() {
               </div>
 
               {entriesSelectMode && filteredEntries.length > 0 ? (
-                <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-zinc-200 bg-zinc-50 px-3 py-2.5 dark:border-zinc-700 dark:bg-zinc-900/80">
-                  <span className="text-sm font-medium text-zinc-800 dark:text-zinc-200">
+                <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-[#1f1f1f] bg-[#0a0a0a] px-3 py-2.5">
+                  <span className="text-sm font-medium text-white">
                     {t("common.selectedCount", { count: selectedEntryIds.size })}
                   </span>
                   <button
                     type="button"
                     onClick={() => void handleBulkDeleteSelected()}
                     disabled={selectedEntryIds.size === 0}
-                    className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40 dark:bg-red-700"
+                    className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40"
                   >
                     {t("common.deleteSelected")}
                   </button>
@@ -2658,7 +2662,7 @@ export default function Home() {
                     onClick={() =>
                       allFilteredSelected ? handleDeselectAllFiltered() : handleSelectAllFiltered()
                     }
-                    className="rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-xs dark:border-zinc-600 dark:bg-zinc-950"
+                    className="rounded-lg border border-[#1f1f1f] bg-[#111111] px-3 py-1.5 text-xs text-[#a3a3a3]"
                   >
                     {allFilteredSelected ? t("common.deselectAll") : t("common.selectAll")}
                   </button>
@@ -2666,11 +2670,11 @@ export default function Home() {
               ) : null}
 
               {filteredEntries.length === 0 ? (
-                <div className="flex flex-col items-center gap-4 rounded-2xl border border-dashed border-[#e5e5e5] bg-white px-6 py-12 text-center dark:border-[#333] dark:bg-[#141414]">
+                <div className="flex flex-col items-center gap-4 rounded-2xl border border-dashed border-[#1f1f1f] bg-[#0a0a0a] px-6 py-12 text-center">
                   <IconSearchEmpty className="shrink-0 opacity-90" />
                   <div className="space-y-2">
-                    <p className="rb-heading text-black dark:text-white">{t("common.emptySearchTitle")}</p>
-                    <p className="max-w-sm text-[13px] text-[#9ca3af]">{t("common.emptySearchSubtitle")}</p>
+                    <p className="rb-heading text-white">{t("common.emptySearchTitle")}</p>
+                    <p className="max-w-sm text-[13px] text-[#a3a3a3]">{t("common.emptySearchSubtitle")}</p>
                   </div>
                 </div>
               ) : (
@@ -2683,21 +2687,21 @@ export default function Home() {
                       aria-label={`Journal entries, ${group.label}`}
                     >
                       <div className="flex items-center gap-2 sm:gap-3">
-                        <span className="h-px min-w-[0.75rem] flex-1 bg-[#e5e5e5] dark:bg-[#333]" aria-hidden />
-                        <span className="rb-micro-label shrink-0 max-w-[85%] px-1 text-center text-[#9ca3af]">
+                        <span className="h-px min-w-[0.75rem] flex-1 bg-[#1f1f1f]" aria-hidden />
+                        <span className="rb-micro-label shrink-0 max-w-[85%] px-1 text-center text-[#6b6b6b]">
                           {group.label}
                         </span>
-                        <span className="h-px min-w-[0.75rem] flex-1 bg-[#e5e5e5] dark:bg-[#333]" aria-hidden />
+                        <span className="h-px min-w-[0.75rem] flex-1 bg-[#1f1f1f]" aria-hidden />
                       </div>
                       <ul className="space-y-3">
                         {group.entries.map((entry) => (
                           <li
                             key={entry.id}
-                            className={`rb-entry-enter touch-manipulation rounded-2xl border border-[#e5e5e5] bg-white p-5 shadow-sm transition-[transform,opacity] duration-150 will-change-transform dark:border-[#262626] dark:bg-[#141414] sm:p-6 ${
+                            className={`rb-entry-enter touch-manipulation rounded-2xl border border-[#1f1f1f] bg-[#0a0a0a] p-5 shadow-sm transition-[transform,opacity] duration-150 will-change-transform sm:p-6 ${
                               entriesSelectMode ? "cursor-pointer" : ""
                             } ${
                               pressingEntryId === entry.id
-                                ? "scale-[0.985] ring-2 ring-[#9ca3af]/90 dark:ring-[#525252]"
+                                ? "scale-[0.985] ring-2 ring-[#6b6b6b]/90"
                                 : ""
                             } ${
                               deletingEntryId === entry.id ? "rb-entry-leaving pointer-events-none" : ""
@@ -2725,16 +2729,16 @@ export default function Home() {
                                     disabled={entry.pending}
                                     onChange={() => toggleEntrySelected(entry.id)}
                                     onClick={(e) => e.stopPropagation()}
-                                    className="h-4 w-4 rounded border-zinc-400"
+                                    className="h-4 w-4 rounded border-[#6b6b6b]"
                                   />
                                 </label>
                               ) : null}
                               <div className="min-w-0 flex-1">
                                 <div className="flex items-start justify-between gap-3">
-                                  <p className="text-[13px] text-[#9ca3af]">
+                                  <p className="text-[13px] text-[#a3a3a3]">
                                     {formatTimestamp(entry.created_at, intlLoc)}
                                     {entry.pending ? (
-                                      <span className="ml-2 font-medium text-[#4a4a4a] dark:text-[#a3a3a3]">
+                                      <span className="ml-2 font-medium text-[#a3a3a3]">
                                         {t("common.entrySaving")}
                                       </span>
                                     ) : null}
@@ -2747,7 +2751,7 @@ export default function Home() {
                                           setEditingCategory(event.target.value.trim().toLowerCase())
                                         }
                                         onClick={(e) => e.stopPropagation()}
-                                        className="rounded-lg border border-[#e5e5e5] bg-white px-2 py-1 text-[13px] outline-none transition focus:border-black focus:ring-0 dark:border-[#333] dark:bg-[#0a0a0a] dark:focus:border-white"
+                                        className="rounded-lg border border-[#1f1f1f] bg-[#0a0a0a] px-2 py-1 text-[13px] text-white outline-none transition focus:border-white focus:ring-0"
                                       >
                                         {!isKnownCategory(entry.category) ? (
                                           <option value={entry.category}>
@@ -2784,8 +2788,8 @@ export default function Home() {
                                               activeTagFilters.some(
                                                 (s) => s.toLowerCase() === tag.toLowerCase(),
                                               )
-                                                ? "bg-black text-white dark:bg-white dark:text-black"
-                                                : "bg-[#f5f5f5] text-[#1a1a1a] hover:bg-[#ebebeb] dark:bg-[#262626] dark:text-[#e5e5e5] dark:hover:bg-[#333]"
+                        ? "bg-white text-black"
+                          : "border border-[#1f1f1f] bg-[#0a0a0a] text-white hover:bg-[#111111]"
                                             }`}
                                           >
                                             {(typeof tag === "string" ? tag : String(tag)).toLowerCase()}
@@ -2806,7 +2810,7 @@ export default function Home() {
                                             deletingEntryId === entry.id ||
                                             entry.pending
                                           }
-                                          className="rb-btn-press inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[#e5e5e5] bg-[#f5f5f5] text-[#4a4a4a] transition hover:bg-[#ebebeb] disabled:cursor-not-allowed disabled:opacity-50 dark:border-[#333] dark:bg-[#262626] dark:text-[#a3a3a3] dark:hover:bg-[#333]"
+                                          className="rb-btn-press inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[#1f1f1f] bg-[#111111] text-[#a3a3a3] transition hover:bg-[#1f1f1f] disabled:cursor-not-allowed disabled:opacity-50"
                                         >
                                           <IconPencil />
                                         </button>
@@ -2822,7 +2826,7 @@ export default function Home() {
                                             deletingEntryId === entry.id ||
                                             entry.pending
                                           }
-                                          className="rb-btn-press inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[#e5e5e5] bg-[#f5f5f5] text-[#4a4a4a] transition hover:bg-[#ebebeb] disabled:cursor-not-allowed disabled:opacity-50 dark:border-[#333] dark:bg-[#262626] dark:text-[#a3a3a3] dark:hover:bg-[#333]"
+                                          className="rb-btn-press inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[#1f1f1f] bg-[#111111] text-[#a3a3a3] transition hover:bg-[#1f1f1f] disabled:cursor-not-allowed disabled:opacity-50"
                                         >
                                           {deletingEntryId === entry.id ? (
                                             <span className="text-xs">…</span>
@@ -2840,7 +2844,7 @@ export default function Home() {
                                       value={editingText}
                                       onChange={(event) => setEditingText(event.target.value)}
                                       onClick={(e) => e.stopPropagation()}
-                                      className="textarea-empty-inner mt-2 min-h-24 max-h-[min(40vh,280px)] w-full resize-y overflow-y-auto rounded-xl border border-[#e5e5e5] bg-white px-[14px] py-[14px] text-[15px] outline-none transition focus:border-black focus:ring-0 dark:border-[#333] dark:bg-[#0a0a0a] dark:focus:border-white"
+                                      className="textarea-empty-inner mt-2 min-h-24 max-h-[min(40vh,280px)] w-full resize-y overflow-y-auto rounded-xl border border-[#1f1f1f] bg-[#0a0a0a] px-[14px] py-[14px] text-[15px] text-white outline-none transition focus:border-white focus:ring-0"
                                     />
                                     <div
                                       className="mt-2 flex flex-wrap gap-1.5"
@@ -2849,13 +2853,13 @@ export default function Home() {
                                       {editingTags.map((tag) => (
                                         <span
                                           key={tag}
-                                          className="inline-flex items-center gap-1 rounded-full bg-[#f5f5f5] px-1.5 py-[3px] text-[11px] font-normal lowercase text-[#1a1a1a] dark:bg-[#262626] dark:text-[#e5e5e5]"
+                                          className="inline-flex items-center gap-1 rounded-full bg-[#1f1f1f] px-1.5 py-[3px] text-[11px] font-normal lowercase text-[#a3a3a3]"
                                         >
                                           {tag}
                                           <button
                                             type="button"
                                             aria-label={`Remove tag ${tag}`}
-                                            className="rounded px-0.5 text-zinc-600 hover:text-zinc-900 dark:text-zinc-300 dark:hover:text-white"
+                                            className="rounded px-0.5 text-[#6b6b6b] hover:text-white"
                                             onClick={() =>
                                               setEditingTags(editingTags.filter((t) => t !== tag))
                                             }
@@ -2881,7 +2885,7 @@ export default function Home() {
                                           }
                                         }}
                                         placeholder={t("common.tagPlaceholder")}
-                                        className="min-h-9 w-full min-w-0 rounded-lg border border-zinc-300 bg-white px-2 py-1.5 text-xs outline-none transition focus:border-zinc-400 focus:ring-2 focus:ring-zinc-300 dark:border-zinc-600 dark:bg-zinc-950 dark:focus:border-zinc-500 dark:focus:ring-zinc-700 sm:max-w-xs"
+                                        className="min-h-9 w-full min-w-0 rounded-lg border border-[#1f1f1f] bg-[#0a0a0a] px-2 py-1.5 text-xs text-white outline-none transition focus:border-white focus:ring-0 sm:max-w-xs"
                                       />
                                       <datalist id={`edit-tag-datalist-${entry.id}`}>
                                         {tagAutocompletePool
@@ -2912,7 +2916,7 @@ export default function Home() {
                                           void handleSaveEdit(entry.id);
                                         }}
                                         disabled={!editingText.trim() || isUpdatingEntry}
-                                        className="rounded-lg bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+                                        className="rounded-lg bg-white px-3 py-1.5 text-xs font-medium text-black transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
                                       >
                                         {isUpdatingEntry ? t("common.saving") : t("common.save")}
                                       </button>
@@ -2923,7 +2927,7 @@ export default function Home() {
                                           handleCancelEdit();
                                         }}
                                         disabled={isUpdatingEntry}
-                                        className="rounded-lg border border-zinc-300 bg-zinc-50 px-3 py-1.5 text-xs font-medium transition hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-950 dark:hover:bg-zinc-900"
+                                        className="rounded-lg border border-[#1f1f1f] bg-[#111111] px-3 py-1.5 text-xs font-medium text-[#a3a3a3] transition hover:bg-[#1f1f1f] disabled:cursor-not-allowed disabled:opacity-50"
                                       >
                                         {t("common.cancel")}
                                       </button>
@@ -2931,7 +2935,7 @@ export default function Home() {
                                   </>
                                 ) : (
                                   <>
-                                    <p className="mt-2 whitespace-pre-wrap text-[15px] leading-relaxed text-black dark:text-[#f5f5f5]">
+                                    <p className="mt-2 whitespace-pre-wrap text-[15px] leading-relaxed text-white">
                                       {entry.text}
                                     </p>
                                   </>
@@ -2955,7 +2959,7 @@ export default function Home() {
             {chatSidebarOpen ? (
               <button
                 type="button"
-                className="fixed inset-y-0 right-0 left-[78vw] z-[69] bg-zinc-950/40 backdrop-blur-[1px] lg:hidden"
+                className="fixed inset-y-0 right-0 left-[78vw] z-[79] bg-black/50 backdrop-blur-[1px] lg:hidden"
                 aria-label={t("common.closeMenu")}
                 onClick={() => setChatSidebarOpen(false)}
               />
@@ -2965,14 +2969,14 @@ export default function Home() {
               <button
                 type="button"
                 onClick={() => setChatSidebarOpen(true)}
-                className="min-h-11 flex-1 rounded-xl border border-zinc-300 bg-white px-3 text-sm font-medium dark:border-zinc-700 dark:bg-zinc-900"
+                className="min-h-11 flex-1 rounded-xl border border-[#1f1f1f] bg-[#0a0a0a] px-3 text-sm font-medium text-white"
               >
                 {t("common.chats")}
               </button>
               <button
                 type="button"
                 onClick={() => void createNewChatThread()}
-                className="min-h-11 flex-1 rounded-xl bg-zinc-900 px-3 text-sm font-medium text-white dark:bg-zinc-100 dark:text-zinc-900"
+                className="min-h-11 flex-1 rounded-xl bg-white px-3 text-sm font-medium text-black"
               >
                 {t("common.newChat")}
               </button>
@@ -2980,14 +2984,14 @@ export default function Home() {
 
             {/* Slide the whole aside off-screen when closed so the fixed box does not steal taps (inner-only translate left the outer hit region in place). */}
             <aside
-              className={`flex flex-col max-lg:fixed max-lg:left-0 max-lg:top-0 max-lg:bottom-0 max-lg:z-[70] max-lg:h-[100dvh] max-lg:w-[78vw] max-lg:transition-transform max-lg:duration-300 max-lg:ease-out ${
+              className={`flex flex-col max-lg:fixed max-lg:left-0 max-lg:top-0 max-lg:bottom-0 max-lg:z-[80] max-lg:h-[100dvh] max-lg:w-[78vw] max-lg:transition-transform max-lg:duration-300 max-lg:ease-out ${
                 chatSidebarOpen ? "max-lg:translate-x-0" : "max-lg:-translate-x-full"
               } lg:static lg:z-0 lg:h-auto lg:max-h-none lg:w-[300px] lg:shrink-0 lg:translate-x-0`}
               aria-hidden={isMobileViewport && !chatSidebarOpen}
             >
               <div
                 ref={chatThreadsAsideInnerRef}
-                className="flex h-full max-h-screen w-full flex-col overflow-hidden border-r border-zinc-200 bg-white shadow-2xl dark:border-zinc-800 dark:bg-zinc-900 lg:max-h-none lg:rounded-2xl lg:border lg:shadow-sm"
+                className="flex h-full max-h-screen w-full flex-col overflow-hidden border-r border-[#1f1f1f] bg-[#0a0a0a] shadow-2xl lg:max-h-none lg:rounded-2xl lg:border lg:border-[#1f1f1f] lg:shadow-sm"
                 style={
                   isMobileViewport &&
                   chatSidebarOpen &&
@@ -3000,10 +3004,10 @@ export default function Home() {
                 }
               >
                 {/* Mobile: partial overlay panel header */}
-                <div className="grid shrink-0 grid-cols-[minmax(3rem,1fr)_minmax(0,auto)_minmax(3rem,1fr)] items-center gap-2 border-b border-zinc-200 px-2 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] dark:border-zinc-800 lg:hidden">
+                <div className="grid shrink-0 grid-cols-[minmax(3rem,1fr)_minmax(0,auto)_minmax(3rem,1fr)] items-center gap-2 border-b border-[#1f1f1f] px-2 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] lg:hidden">
                   <button
                     type="button"
-                    className="flex min-h-12 min-w-12 items-center justify-center rounded-xl text-zinc-700 transition hover:bg-zinc-100 active:bg-zinc-200 dark:text-zinc-200 dark:hover:bg-zinc-800 dark:active:bg-zinc-700"
+                    className="flex min-h-12 min-w-12 items-center justify-center rounded-xl text-[#a3a3a3] transition hover:bg-[#111111] active:bg-[#1f1f1f]"
                     onClick={() => setChatSidebarOpen(false)}
                     aria-label={t("common.back")}
                   >
@@ -3011,20 +3015,20 @@ export default function Home() {
                       ←
                     </span>
                   </button>
-                  <h2 className="pointer-events-none text-center text-base font-semibold text-zinc-900 dark:text-zinc-100">
+                  <h2 className="pointer-events-none text-center text-base font-semibold text-white">
                     {t("common.chats")}
                   </h2>
                   <button
                     type="button"
                     onClick={() => void createNewChatThread()}
-                    className="justify-self-end whitespace-nowrap rounded-xl bg-zinc-900 px-3 py-3 text-sm font-semibold text-white dark:bg-zinc-100 dark:text-zinc-900"
+                    className="justify-self-end whitespace-nowrap rounded-xl bg-white px-3 py-3 text-sm font-semibold text-black"
                   >
                     {t("common.newChat")}
                   </button>
                 </div>
 
-                <div className="hidden items-center justify-between border-b border-zinc-200 p-3 dark:border-zinc-800 lg:flex lg:rounded-t-2xl">
-                  <span className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+                <div className="hidden items-center justify-between border-b border-[#1f1f1f] p-3 lg:flex lg:rounded-t-2xl">
+                  <span className="text-sm font-semibold text-white">
                     {t("common.chats")}
                   </span>
                 </div>
@@ -3032,7 +3036,7 @@ export default function Home() {
                   <button
                     type="button"
                     onClick={() => void createNewChatThread()}
-                    className="w-full rounded-xl border border-dashed border-zinc-300 bg-zinc-50 py-2.5 text-sm font-medium text-zinc-800 dark:border-zinc-600 dark:bg-zinc-950 dark:text-zinc-200"
+                    className="w-full rounded-xl border border-dashed border-[#1f1f1f] bg-[#111111] py-2.5 text-sm font-medium text-[#a3a3a3]"
                   >
                     {t("common.newChat")}
                   </button>
@@ -3043,20 +3047,20 @@ export default function Home() {
                     className="flex min-h-0 flex-1 flex-col space-y-1 overflow-y-auto p-2 pt-0 pb-[max(0.5rem,env(safe-area-inset-bottom))]"
                   >
                 {chatThreadsLoading ? (
-                  <li className="px-2 text-sm text-zinc-500">{t("common.loading")}</li>
+                  <li className="px-2 text-sm text-[#6b6b6b]">{t("common.loading")}</li>
                 ) : chatThreads.length === 0 ? (
                   <li className="flex flex-col items-center gap-4 px-2 py-8 text-center">
                     <IconChatBubbleEmpty className="shrink-0 opacity-90" />
                     <div className="space-y-2">
-                      <p className="rb-heading text-black dark:text-white">{t("common.emptyChatsTitle")}</p>
-                      <p className="text-[13px] leading-relaxed text-[#4a4a4a] dark:text-[#a3a3a3]">
+                      <p className="rb-heading text-white">{t("common.emptyChatsTitle")}</p>
+                      <p className="text-[13px] leading-relaxed text-[#a3a3a3]">
                         {t("common.emptyChatsSubtitle")}
                       </p>
                     </div>
                     <button
                       type="button"
                       onClick={() => void createNewChatThread()}
-                      className="rb-btn-press w-full rounded-xl bg-black py-2.5 text-sm font-medium text-white dark:bg-white dark:text-black"
+                      className="rb-btn-press w-full rounded-xl bg-white py-2.5 text-sm font-medium text-black"
                     >
                       {t("common.newChat")}
                     </button>
@@ -3072,21 +3076,21 @@ export default function Home() {
                         }}
                         className={`min-w-0 flex-1 rounded-xl px-3 py-2 text-left text-sm transition ${
                           activeThreadId === thread.id
-                            ? "bg-zinc-200 dark:bg-zinc-800"
-                            : "hover:bg-zinc-100 dark:hover:bg-zinc-800/80"
+                            ? "bg-[#1f1f1f]"
+                            : "hover:bg-[#111111]"
                         }`}
                       >
-                        <div className="truncate font-medium text-zinc-900 dark:text-zinc-100">
+                        <div className="truncate font-medium text-white">
                           {thread.title?.trim() || t("common.newChatTitle")}
                         </div>
-                        <div className="text-xs text-zinc-500 dark:text-zinc-400">
+                        <div className="text-xs text-[#6b6b6b]">
                           {formatShortThreadDate(thread.updated_at, intlLoc)}
                         </div>
                       </button>
                       <button
                         type="button"
                         onClick={() => void handleDeleteChatThread(thread.id)}
-                        className="rb-btn-press shrink-0 rounded-lg p-2 text-[#9ca3af] opacity-100 transition hover:bg-[#f5f5f5] hover:text-black sm:opacity-0 sm:group-hover:opacity-100 dark:hover:bg-[#262626] dark:hover:text-white"
+                        className="rb-btn-press shrink-0 rounded-lg p-2 text-[#6b6b6b] opacity-100 transition hover:bg-[#1f1f1f] hover:text-white sm:opacity-0 sm:group-hover:opacity-100"
                         aria-label={t("common.deleteChatAria")}
                       >
                         <IconTrash className="mx-auto" />
@@ -3099,14 +3103,14 @@ export default function Home() {
               </div>
             </aside>
 
-            <section className="flex min-h-[min(60vh,520px)] min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-[#e5e5e5] bg-white shadow-sm dark:border-[#262626] dark:bg-[#141414]">
+            <section className="flex min-h-[min(60vh,520px)] min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-[#1f1f1f] bg-[#0a0a0a] shadow-sm">
               {!isLoading && entries.length === 0 ? (
-                <p className="shrink-0 border-b border-[#e5e5e5] px-4 py-3 text-center text-[13px] text-[#4a4a4a] dark:border-[#262626] dark:text-[#a3a3a3]">
+                <p className="shrink-0 border-b border-[#1f1f1f] px-4 py-3 text-center text-[13px] text-[#a3a3a3]">
                   {t("common.addEntriesBannerShort")}
                 </p>
               ) : null}
               {chatError ? (
-                <p className="rb-toast-banner shrink-0 border-b border-[#e5e5e5] bg-[#f5f5f5] px-4 py-2 text-sm text-[#1a1a1a] dark:border-[#262626] dark:bg-[#1f1f1f] dark:text-[#e5e5e5]">
+                <p className="rb-toast-banner shrink-0 border-b border-[#1f1f1f] bg-[#111111] px-4 py-2 text-sm text-[#a3a3a3]">
                   {chatError}
                 </p>
               ) : null}
@@ -3115,14 +3119,14 @@ export default function Home() {
                 className="relative flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-3 py-4 sm:px-4"
               >
                 {threadMessagesLoading ? (
-                  <p className="py-6 text-center text-sm text-zinc-500">{t("common.loadingMessages")}</p>
+                  <p className="py-6 text-center text-sm text-[#6b6b6b]">{t("common.loadingMessages")}</p>
                 ) : null}
                 {!threadMessagesLoading &&
                 !activeThreadId &&
                 !chatThreadsLoading &&
                 chatThreads.length === 0 &&
                 entries.length === 0 ? (
-                  <p className="px-2 py-10 text-center text-sm text-zinc-600 dark:text-zinc-400">
+                  <p className="px-2 py-10 text-center text-sm text-[#a3a3a3]">
                     {t("common.noEntriesForSuggestions")}
                   </p>
                 ) : null}
@@ -3134,15 +3138,15 @@ export default function Home() {
                   <div className="flex flex-col items-center gap-4 py-10 text-center">
                     <IconChatBubbleEmpty className="shrink-0 opacity-90" />
                     <div className="space-y-2 px-2">
-                      <p className="rb-heading text-black dark:text-white">{t("common.emptyChatsTitle")}</p>
-                      <p className="text-[13px] leading-relaxed text-[#4a4a4a] dark:text-[#a3a3a3]">
+                      <p className="rb-heading text-white">{t("common.emptyChatsTitle")}</p>
+                      <p className="text-[13px] leading-relaxed text-[#a3a3a3]">
                         {t("common.emptyChatsSubtitle")}
                       </p>
                     </div>
                     <button
                       type="button"
                       onClick={() => void createNewChatThread()}
-                      className="rb-btn-press rounded-xl bg-black px-5 py-2.5 text-sm font-medium text-white dark:bg-white dark:text-black"
+                      className="rb-btn-press rounded-xl bg-white px-5 py-2.5 text-sm font-medium text-black"
                     >
                       {t("common.newChat")}
                     </button>
@@ -3153,7 +3157,7 @@ export default function Home() {
                 !isChatSending &&
                 !threadMessagesLoading &&
                 entries.length === 0 ? (
-                  <p className="px-2 py-6 text-center text-sm text-zinc-600 dark:text-zinc-400">
+                  <p className="px-2 py-6 text-center text-sm text-[#a3a3a3]">
                     {t("common.noEntriesForSuggestions")}
                   </p>
                 ) : null}
@@ -3168,8 +3172,8 @@ export default function Home() {
                         className="mx-auto max-w-2xl space-y-2 py-2 opacity-60"
                         aria-hidden
                       >
-                        <div className="h-1.5 w-[42%] max-w-[11rem] rounded-full bg-zinc-200/80 dark:bg-zinc-700/50" />
-                        <div className="h-1.5 w-[30%] max-w-[8rem] rounded-full bg-zinc-200/70 dark:bg-zinc-700/40" />
+                        <div className="h-1.5 w-[42%] max-w-[11rem] rounded-full bg-[#1f1f1f]" />
+                        <div className="h-1.5 w-[30%] max-w-[8rem] rounded-full bg-[#1f1f1f]/80" />
                       </div>
                     ) : null}
                     {suggestedChatQuestions.length > 0 ? (
@@ -3183,7 +3187,7 @@ export default function Home() {
                             key={`${index}-${q.slice(0, 80)}`}
                             type="button"
                             onClick={() => handleSuggestedQuestion(q)}
-                            className="rb-btn-press rounded-full border border-[#e5e5e5] bg-[#fafafa] px-3 py-1.5 text-left text-[13px] leading-snug text-[#1a1a1a] transition hover:bg-[#f5f5f5] dark:border-[#333] dark:bg-[#1a1a1a] dark:text-[#e5e5e5] dark:hover:bg-[#262626]"
+                            className="rb-btn-press rounded-full border border-[#1f1f1f] bg-[#111111] px-3 py-1.5 text-left text-[13px] leading-snug text-[#a3a3a3] transition hover:bg-[#1f1f1f]"
                           >
                             {q}
                           </button>
@@ -3205,10 +3209,10 @@ export default function Home() {
                       className={`chat-message-enter flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
                     >
                       <div
-                        className={`max-w-[min(100%,24rem)] whitespace-pre-wrap rounded-[17px] px-4 py-2.5 text-[15px] leading-[1.45] shadow-[0_2px_12px_rgba(0,0,0,0.06)] dark:shadow-[0_2px_12px_rgba(0,0,0,0.35)] ${
+                        className={`max-w-[min(100%,24rem)] whitespace-pre-wrap rounded-[17px] px-4 py-2.5 text-[15px] leading-[1.45] shadow-[0_2px_12px_rgba(0,0,0,0.35)] ${
                           message.role === "user"
-                            ? "bg-black text-white dark:bg-black dark:text-white"
-                            : "bg-[#f5f5f5] text-black dark:bg-[#262626] dark:text-[#f5f5f5]"
+                            ? "bg-white text-black"
+                            : "bg-[#1f1f1f] text-white"
                         }`}
                       >
                         {showAssistantTypingDots ? (
@@ -3218,9 +3222,9 @@ export default function Home() {
                             aria-label={t("common.assistantTyping")}
                             className="inline-flex items-center gap-1.5"
                           >
-                            <span className="chat-typing-dot inline-block h-1.5 w-1.5 rounded-full bg-[#9ca3af] dark:bg-[#737373]" />
-                            <span className="chat-typing-dot inline-block h-1.5 w-1.5 rounded-full bg-[#9ca3af] dark:bg-[#737373]" />
-                            <span className="chat-typing-dot inline-block h-1.5 w-1.5 rounded-full bg-[#9ca3af] dark:bg-[#737373]" />
+                            <span className="chat-typing-dot inline-block h-1.5 w-1.5 rounded-full bg-[#6b6b6b]" />
+                            <span className="chat-typing-dot inline-block h-1.5 w-1.5 rounded-full bg-[#6b6b6b]" />
+                            <span className="chat-typing-dot inline-block h-1.5 w-1.5 rounded-full bg-[#6b6b6b]" />
                           </span>
                         ) : (
                           message.content
@@ -3232,7 +3236,7 @@ export default function Home() {
               </div>
               <form
                 onSubmit={(event) => void handleChatSubmit(event)}
-                className="flex shrink-0 flex-col gap-2 border-t border-[#e5e5e5] bg-white p-3 pb-[max(12px,env(safe-area-inset-bottom))] dark:border-[#262626] dark:bg-[#141414] sm:flex-row sm:items-end sm:pb-3"
+                className="flex shrink-0 flex-col gap-2 border-t border-[#1f1f1f] bg-[#0a0a0a] p-3 pb-[max(12px,env(safe-area-inset-bottom))] sm:flex-row sm:items-end sm:pb-3"
               >
                 <textarea
                   ref={chatComposerRef}
@@ -3257,7 +3261,7 @@ export default function Home() {
                       : t("common.askPlaceholder")
                   }
                   disabled={isLoading || entries.length === 0 || !activeThreadId}
-                  className="textarea-empty-inner max-h-40 min-h-11 w-full resize-none rounded-xl border border-[#e5e5e5] bg-white px-[14px] py-[14px] text-[15px] outline-none transition focus:border-black focus:ring-0 disabled:cursor-not-allowed disabled:opacity-50 dark:border-[#333] dark:bg-[#0a0a0a] dark:text-[#f5f5f5] dark:focus:border-white"
+                  className="textarea-empty-inner max-h-40 min-h-11 w-full resize-none rounded-xl border border-[#1f1f1f] bg-[#0a0a0a] px-[14px] py-[14px] text-[15px] text-white outline-none transition focus:border-white focus:ring-0 disabled:cursor-not-allowed disabled:opacity-50"
                 />
                 <button
                   type="submit"
@@ -3268,7 +3272,7 @@ export default function Home() {
                     entries.length === 0 ||
                     !activeThreadId
                   }
-                  className="rb-btn-press shrink-0 rounded-xl bg-black px-4 py-2.5 text-sm font-medium text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-white dark:text-black dark:hover:opacity-90 sm:w-auto sm:self-stretch sm:px-6"
+                  className="rb-btn-press shrink-0 rounded-xl bg-white px-4 py-2.5 text-sm font-medium text-black transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:self-stretch sm:px-6"
                 >
                   {t("common.send")}
                 </button>
@@ -3288,13 +3292,13 @@ export default function Home() {
             }
           }}
         >
-          <div className="rb-modal-dialog mx-auto w-full max-w-lg rounded-2xl border border-[#e5e5e5] bg-white p-5 shadow-xl dark:border-[#262626] dark:bg-[#141414] sm:p-6">
+          <div className="rb-modal-dialog mx-auto w-full max-w-lg rounded-2xl border border-[#1f1f1f] bg-[#0a0a0a] p-5 shadow-xl sm:p-6">
             <div className="mb-3 flex items-center justify-between gap-2">
-              <h3 className="text-base font-semibold">{t("common.exportTitle")}</h3>
+              <h3 className="text-base font-semibold text-white">{t("common.exportTitle")}</h3>
               <button
                 type="button"
                 onClick={() => setIsExportModalOpen(false)}
-                className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-300 bg-zinc-50 text-sm transition hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-950 dark:hover:bg-zinc-900"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[#1f1f1f] bg-[#111111] text-sm text-[#a3a3a3] transition hover:bg-[#1f1f1f]"
                 aria-label={t("common.closeExportModal")}
               >
                 ✕
@@ -3303,7 +3307,7 @@ export default function Home() {
 
             <div className="space-y-4">
               <div className="space-y-2">
-                <p className="text-sm font-medium">{t("common.formatLabel")}</p>
+                <p className="text-sm font-medium text-white">{t("common.formatLabel")}</p>
                 <div className="flex flex-wrap gap-2">
                   {[
                     { id: "markdown" as const, label: t("common.markdownExport") },
@@ -3316,8 +3320,8 @@ export default function Home() {
                       onClick={() => setExportFormat(option.id as ExportFormat)}
                       className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
                         exportFormat === option.id
-                          ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
-                          : "bg-zinc-200 text-zinc-700 hover:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
+                          ? "bg-white text-black"
+                          : "border border-[#1f1f1f] bg-[#111111] text-[#a3a3a3] hover:bg-[#1f1f1f]"
                       }`}
                     >
                       {option.label}
@@ -3327,8 +3331,8 @@ export default function Home() {
               </div>
 
               <div className="space-y-2">
-                <p className="text-sm font-medium">{t("common.scopeLabel")}</p>
-                <div className="space-y-1 text-sm">
+                <p className="text-sm font-medium text-white">{t("common.scopeLabel")}</p>
+                <div className="space-y-1 text-sm text-[#a3a3a3]">
                   <label className="flex items-center gap-2">
                     <input
                       type="radio"
@@ -3364,22 +3368,22 @@ export default function Home() {
                 </div>
                 {exportScope === "date-range" ? (
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                    <label className="text-xs">
+                    <label className="text-xs text-[#a3a3a3]">
                       {t("common.startDate")}
                       <input
                         type="date"
                         value={exportStartDate}
                         onChange={(event) => setExportStartDate(event.target.value)}
-                        className="mt-1 w-full rounded-lg border border-zinc-300 bg-zinc-50 px-2 py-1.5 text-sm outline-none transition focus:border-zinc-400 focus:ring-2 focus:ring-zinc-300 dark:border-zinc-700 dark:bg-zinc-950 dark:focus:border-zinc-500 dark:focus:ring-zinc-700"
+                        className="mt-1 w-full rounded-lg border border-[#1f1f1f] bg-[#0a0a0a] px-2 py-1.5 text-sm text-white outline-none transition focus:border-white focus:ring-0"
                       />
                     </label>
-                    <label className="text-xs">
+                    <label className="text-xs text-[#a3a3a3]">
                       {t("common.endDate")}
                       <input
                         type="date"
                         value={exportEndDate}
                         onChange={(event) => setExportEndDate(event.target.value)}
-                        className="mt-1 w-full rounded-lg border border-zinc-300 bg-zinc-50 px-2 py-1.5 text-sm outline-none transition focus:border-zinc-400 focus:ring-2 focus:ring-zinc-300 dark:border-zinc-700 dark:bg-zinc-950 dark:focus:border-zinc-500 dark:focus:ring-zinc-700"
+                        className="mt-1 w-full rounded-lg border border-[#1f1f1f] bg-[#0a0a0a] px-2 py-1.5 text-sm text-white outline-none transition focus:border-white focus:ring-0"
                       />
                     </label>
                   </div>
@@ -3387,8 +3391,8 @@ export default function Home() {
               </div>
 
               <div className="space-y-2">
-                <p className="text-sm font-medium">{t("common.categoriesLabel")}</p>
-                <div className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-3">
+                <p className="text-sm font-medium text-white">{t("common.categoriesLabel")}</p>
+                <div className="grid grid-cols-2 gap-2 text-sm text-[#a3a3a3] sm:grid-cols-3">
                   {ALL_CATEGORIES.map((category) => (
                     <label key={category} className="flex items-center gap-2">
                       <input
@@ -3402,7 +3406,7 @@ export default function Home() {
                 </div>
               </div>
 
-              <p className="text-sm text-zinc-600 dark:text-zinc-400">
+              <p className="text-sm text-[#a3a3a3]">
                 {t("common.exportCountSelected", { count: exportableEntries.length })}
               </p>
 
@@ -3410,19 +3414,19 @@ export default function Home() {
                 <button
                   type="button"
                   onClick={() => void handleCopyExport()}
-                  className="rounded-lg bg-zinc-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+                  className="rounded-lg bg-white px-3 py-2 text-sm font-medium text-black transition hover:opacity-90"
                 >
                   {t("common.copyClipboard")}
                 </button>
                 <button
                   type="button"
                   onClick={handleDownloadExport}
-                  className="rounded-lg border border-zinc-300 bg-zinc-50 px-3 py-2 text-sm font-medium transition hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-950 dark:hover:bg-zinc-900"
+                  className="rounded-lg border border-[#1f1f1f] bg-[#111111] px-3 py-2 text-sm font-medium text-[#a3a3a3] transition hover:bg-[#1f1f1f]"
                 >
                   {t("common.downloadFile")}
                 </button>
                 {copyFeedback ? (
-                  <span className="self-center text-sm text-[#4a4a4a] dark:text-[#a3a3a3]">
+                  <span className="self-center text-sm text-[#a3a3a3]">
                     {copyFeedback}
                   </span>
                 ) : null}

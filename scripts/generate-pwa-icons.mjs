@@ -1,6 +1,6 @@
 /**
- * Generates placeholder PWA icons (letter R on emerald background).
- * Run: node scripts/generate-pwa-icons.mjs
+ * Generates placeholder PWA icons (letter R on black background).
+ * Run: npm run generate:pwa-icons
  */
 import sharp from "sharp";
 import fs from "fs/promises";
@@ -10,7 +10,7 @@ import { fileURLToPath } from "url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.join(__dirname, "..", "public");
 
-const BG = "#059669";
+const BG = "#000000";
 const FG = "#ffffff";
 
 async function renderIcon(size) {

@@ -25,9 +25,9 @@ export function IconGear(props: SVGProps<SVGSVGElement>) {
 export function IconNotebookEmpty(props: SVGProps<SVGSVGElement>) {
   return (
     <svg viewBox="0 0 64 64" width={64} height={64} aria-hidden {...props}>
-      <rect x="14" y="8" width="36" height="48" rx="4" fill="#f5f5f5" stroke="#e5e5e5" strokeWidth="2" />
-      <path d="M22 18h20M22 26h16M22 34h20" stroke="#d4d4d4" strokeWidth="2" strokeLinecap="round" />
-      <circle cx="46" cy="14" r="2" fill="#d4d4d4" />
+      <rect x="14" y="8" width="36" height="48" rx="4" fill="#1f1f1f" stroke="#6b6b6b" strokeWidth="2" />
+      <path d="M22 18h20M22 26h16M22 34h20" stroke="#6b6b6b" strokeWidth="2" strokeLinecap="round" />
+      <circle cx="46" cy="14" r="2" fill="#6b6b6b" />
     </svg>
   );
 }
@@ -37,11 +37,11 @@ export function IconChatBubbleEmpty(props: SVGProps<SVGSVGElement>) {
     <svg viewBox="0 0 64 64" width={64} height={64} aria-hidden {...props}>
       <path
         d="M12 18c0-3.3 2.7-6 6-6h28c3.3 0 6 2.7 6 6v18c0 3.3-2.7 6-6 6H26l-10 8v-8h-4c-3.3 0-6-2.7-6-6V18z"
-        fill="#f5f5f5"
-        stroke="#e5e5e5"
+        fill="#1f1f1f"
+        stroke="#6b6b6b"
         strokeWidth="2"
       />
-      <path d="M22 24h20M22 32h12" stroke="#d4d4d4" strokeWidth="2" strokeLinecap="round" />
+      <path d="M22 24h20M22 32h12" stroke="#6b6b6b" strokeWidth="2" strokeLinecap="round" />
     </svg>
   );
 }
@@ -49,9 +49,9 @@ export function IconChatBubbleEmpty(props: SVGProps<SVGSVGElement>) {
 export function IconSearchEmpty(props: SVGProps<SVGSVGElement>) {
   return (
     <svg viewBox="0 0 64 64" width={64} height={64} aria-hidden {...props}>
-      <circle cx="28" cy="28" r="14" fill="none" stroke="#e5e5e5" strokeWidth="2.5" />
-      <path d="M38 38l12 12" stroke="#e5e5e5" strokeWidth="2.5" strokeLinecap="round" />
-      <path d="M22 28h12" stroke="#d4d4d4" strokeWidth="2" strokeLinecap="round" />
+      <circle cx="28" cy="28" r="14" fill="none" stroke="#6b6b6b" strokeWidth="2.5" />
+      <path d="M38 38l12 12" stroke="#6b6b6b" strokeWidth="2.5" strokeLinecap="round" />
+      <path d="M22 28h12" stroke="#525252" strokeWidth="2" strokeLinecap="round" />
     </svg>
   );
 }

@@ -22,7 +22,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     title: "Remembrain",
-    statusBarStyle: "default",
+    statusBarStyle: "black",
   },
   formatDetection: {
     telephone: false,
@@ -38,7 +38,7 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   themeColor: "#000000",
-  colorScheme: "light dark",
+  colorScheme: "dark",
 };
 
 export default function RootLayout({
@@ -49,9 +49,9 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`dark ${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="flex min-h-full flex-col bg-[#fafafa] text-black dark:bg-[#0a0a0a] dark:text-[#f5f5f5]">
+      <body className="flex min-h-full flex-col bg-black text-white">
         <Providers>{children}</Providers>
         <ServiceWorkerRegistration />
       </body>
