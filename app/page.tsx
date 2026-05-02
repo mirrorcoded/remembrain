@@ -1808,10 +1808,15 @@ export default function Home() {
     );
   }
 
+  const hideMobileThreadsChrome =
+    isMobileViewport && activeTab === "chat" && chatSidebarOpen;
+
   return (
     <div className="min-h-screen bg-zinc-100 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
       <main className="mx-auto flex w-full max-w-6xl flex-col px-4 pb-10 pt-4 sm:px-6">
-        <header className="mb-4 flex flex-wrap items-start justify-between gap-4 sm:mb-5">
+        <header
+          className={`mb-4 flex flex-wrap items-start justify-between gap-4 sm:mb-5 ${hideMobileThreadsChrome ? "max-lg:hidden" : ""}`}
+        >
           <div className="space-y-1">
             <h1 className="text-2xl font-semibold tracking-tight">Remembrain</h1>
             <p className="text-sm text-zinc-600 dark:text-zinc-400">
@@ -1840,7 +1845,9 @@ export default function Home() {
           </div>
         </header>
 
-        <div className="sticky top-0 z-[60] -mx-4 mb-5 border-b border-zinc-200 bg-zinc-100/95 pb-3 pt-2 backdrop-blur-md supports-[backdrop-filter]:bg-zinc-100/85 dark:border-zinc-800 dark:bg-zinc-950/95 dark:supports-[backdrop-filter]:bg-zinc-950/90 sm:-mx-6 sm:mb-6 sm:px-6 sm:pb-4 sm:pt-3">
+        <div
+          className={`sticky top-0 z-[60] -mx-4 mb-5 border-b border-zinc-200 bg-zinc-100/95 pb-3 pt-2 backdrop-blur-md supports-[backdrop-filter]:bg-zinc-100/85 dark:border-zinc-800 dark:bg-zinc-950/95 dark:supports-[backdrop-filter]:bg-zinc-950/90 sm:-mx-6 sm:mb-6 sm:px-6 sm:pb-4 sm:pt-3 ${hideMobileThreadsChrome ? "max-lg:hidden" : ""}`}
+        >
           <div className="grid w-full grid-cols-2 gap-2 px-4 sm:gap-3 sm:px-0">
             <button
               type="button"
@@ -2350,13 +2357,15 @@ export default function Home() {
             {chatSidebarOpen ? (
               <button
                 type="button"
-                className="fixed inset-0 z-40 bg-zinc-950/50 lg:hidden"
+                className="fixed inset-0 z-[69] bg-zinc-950/50 lg:hidden"
                 aria-label="Close menu"
                 onClick={() => setChatSidebarOpen(false)}
               />
             ) : null}
 
-            <div className="relative z-[55] flex items-center gap-2 lg:z-auto lg:hidden">
+            <div
+              className={`relative z-[55] flex items-center gap-2 lg:z-auto lg:hidden ${hideMobileThreadsChrome ? "hidden" : ""}`}
+            >
               <button
                 type="button"
                 onClick={() => setChatSidebarOpen(true)}
@@ -2375,9 +2384,9 @@ export default function Home() {
 
             {/* Slide the whole aside off-screen when closed so the fixed box does not steal taps (inner-only translate left the outer hit region in place). */}
             <aside
-              className={`fixed inset-y-0 left-0 z-50 flex h-full max-h-screen w-[min(20rem,92vw)] flex-col max-lg:transition-transform max-lg:duration-300 max-lg:ease-out lg:static lg:z-0 lg:h-auto lg:max-h-none lg:w-64 lg:shrink-0 lg:translate-x-0 ${
+              className={`flex flex-col max-lg:fixed max-lg:inset-0 max-lg:z-[70] max-lg:h-[100dvh] max-lg:w-full max-lg:max-w-none max-lg:transition-transform max-lg:duration-300 max-lg:ease-out ${
                 chatSidebarOpen ? "max-lg:translate-x-0" : "max-lg:-translate-x-full"
-              }`}
+              } lg:static lg:z-0 lg:h-auto lg:max-h-none lg:w-64 lg:shrink-0 lg:translate-x-0`}
               aria-hidden={!chatSidebarOpen}
             >
               <div
@@ -2394,27 +2403,43 @@ export default function Home() {
                     : undefined
                 }
               >
-              <div className="flex items-center justify-between border-b border-zinc-200 p-3 dark:border-zinc-800 lg:rounded-t-2xl">
-                <span className="text-sm font-semibold">Chats</span>
-                <button
-                  type="button"
-                  className="rounded-lg p-2 text-zinc-500 hover:bg-zinc-100 lg:hidden dark:hover:bg-zinc-800"
-                  onClick={() => setChatSidebarOpen(false)}
-                  aria-label="Close"
-                >
-                  ✕
-                </button>
-              </div>
-              <div className="p-2">
-                <button
-                  type="button"
-                  onClick={() => void createNewChatThread()}
-                  className="w-full rounded-xl border border-dashed border-zinc-300 bg-zinc-50 py-2.5 text-sm font-medium text-zinc-800 dark:border-zinc-600 dark:bg-zinc-950 dark:text-zinc-200"
-                >
-                  + New chat
-                </button>
-              </div>
-              <ul className="flex min-h-0 flex-1 flex-col space-y-1 overflow-y-auto p-2 pt-0">
+                {/* Mobile: full-screen panel chrome (main app tabs/header hidden via hideMobileThreadsChrome) */}
+                <div className="grid shrink-0 grid-cols-[minmax(3rem,1fr)_minmax(0,auto)_minmax(3rem,1fr)] items-center gap-2 border-b border-zinc-200 px-2 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] dark:border-zinc-800 lg:hidden">
+                  <button
+                    type="button"
+                    className="flex min-h-12 min-w-12 items-center justify-center rounded-xl text-zinc-700 transition hover:bg-zinc-100 active:bg-zinc-200 dark:text-zinc-200 dark:hover:bg-zinc-800 dark:active:bg-zinc-700"
+                    onClick={() => setChatSidebarOpen(false)}
+                    aria-label="Back"
+                  >
+                    <span className="text-xl leading-none" aria-hidden>
+                      ←
+                    </span>
+                  </button>
+                  <h2 className="pointer-events-none text-center text-base font-semibold text-zinc-900 dark:text-zinc-100">
+                    Chats
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={() => void createNewChatThread()}
+                    className="justify-self-end whitespace-nowrap rounded-xl bg-zinc-900 px-3 py-3 text-sm font-semibold text-white dark:bg-zinc-100 dark:text-zinc-900"
+                  >
+                    + New chat
+                  </button>
+                </div>
+
+                <div className="hidden items-center justify-between border-b border-zinc-200 p-3 dark:border-zinc-800 lg:flex lg:rounded-t-2xl">
+                  <span className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">Chats</span>
+                </div>
+                <div className="hidden p-2 lg:block">
+                  <button
+                    type="button"
+                    onClick={() => void createNewChatThread()}
+                    className="w-full rounded-xl border border-dashed border-zinc-300 bg-zinc-50 py-2.5 text-sm font-medium text-zinc-800 dark:border-zinc-600 dark:bg-zinc-950 dark:text-zinc-200"
+                  >
+                    + New chat
+                  </button>
+                </div>
+                <ul className="flex min-h-0 flex-1 flex-col space-y-1 overflow-y-auto p-2 pt-0 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
                 {chatThreadsLoading ? (
                   <li className="px-2 text-sm text-zinc-500">Loading…</li>
                 ) : chatThreads.length === 0 ? (
