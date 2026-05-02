@@ -245,6 +245,8 @@ export const messages: Record<UiLocale, MessageTree> = {
       settingsCouldNotDeleteEntries: "Could not delete entries. Please try again.",
       settingsSaveProfileBusy: "Saving…",
       categoryOlder: "(older)",
+      retry: "Retry",
+      entrySaving: "Saving…",
     },
     category: {
       health: "Health",
@@ -500,6 +502,8 @@ export const messages: Record<UiLocale, MessageTree> = {
       settingsCouldNotDeleteEntries: "항목을 삭제하지 못했습니다.",
       settingsSaveProfileBusy: "저장 중…",
       categoryOlder: "(이전)",
+      retry: "다시 시도",
+      entrySaving: "저장 중…",
     },
     category: {
       health: "건강",

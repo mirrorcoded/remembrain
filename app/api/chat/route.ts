@@ -2,7 +2,14 @@ import { generateAndSaveChatTitle } from "@/lib/chat-title";
 import { getRelevantContext } from "@/lib/retrieval";
 import { normalizeUserLocale, translate } from "@/lib/i18n";
 import { getAuthenticatedSupabase } from "@/lib/supabase/server";
+import Anthropic from "@anthropic-ai/sdk";
 import { NextResponse } from "next/server";
+
+const CHAT_MODEL = "claude-sonnet-4-5-20250929";
+
+function ndjsonLine(obj: object): Uint8Array {
+  return new TextEncoder().encode(`${JSON.stringify(obj)}\n`);
+}
 
 export async function POST(request: Request) {
   try {
@@ -114,62 +121,97 @@ ${entriesBlock}`;
         content: String(row.content ?? ""),
       }));
 
-    const anthropicResponse = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
+    const anthropic = new Anthropic({ apiKey });
+
+    const stream = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        const enqueueJson = (obj: object) => {
+          controller.enqueue(ndjsonLine(obj));
+        };
+
+        try {
+          const msgStream = anthropic.messages.stream(
+            {
+              model: CHAT_MODEL,
+              max_tokens: 2048,
+              temperature: 0,
+              system: systemPrompt,
+              messages: claudeMessages,
+            },
+            { signal: request.signal },
+          );
+
+          msgStream.on("text", (textDelta: string) => {
+            enqueueJson({ type: "delta", text: textDelta });
+          });
+
+          let assistantText: string;
+          try {
+            assistantText = (await msgStream.finalText()).trim();
+          } catch (finalErr) {
+            console.error("[chat] stream finalText:", finalErr);
+            enqueueJson({
+              type: "error",
+              message: "Assistant response incomplete.",
+            });
+            controller.close();
+            return;
+          }
+
+          if (!assistantText) {
+            assistantText = "Something went wrong.";
+          }
+
+          const { error: insertAssistantError } = await supabase.from("chat_messages").insert({
+            thread_id: threadId,
+            role: "assistant",
+            content: assistantText,
+          });
+
+          if (insertAssistantError) {
+            console.error("[chat] insert assistant:", insertAssistantError);
+            enqueueJson({ type: "error", message: "Could not save reply." });
+            controller.close();
+            return;
+          }
+
+          const now = new Date().toISOString();
+          await supabase.from("chat_threads").update({ updated_at: now }).eq("id", threadId);
+
+          const needsTitle = thread.title == null || String(thread.title).trim() === "";
+          if (needsTitle) {
+            void generateAndSaveChatTitle(supabase, threadId).catch((err) => {
+              console.error("[chat] title generation:", err);
+            });
+          }
+
+          enqueueJson({
+            type: "done",
+            thread_id: threadId,
+            response: assistantText,
+          });
+          controller.close();
+        } catch (err) {
+          console.error("[chat] stream handler:", err);
+          const message =
+            err instanceof Error ? err.message : "Something went wrong.";
+          try {
+            controller.enqueue(ndjsonLine({ type: "error", message }));
+          } catch {
+            /* stream may be closed */
+          }
+          controller.close();
+        }
       },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-5-20250929",
-        max_tokens: 2048,
-        temperature: 0,
-        system: systemPrompt,
-        messages: claudeMessages,
-      }),
     });
 
-    const rawText = await anthropicResponse.text();
-
-    if (!anthropicResponse.ok) {
-      console.error("[chat] Anthropic error:", rawText.slice(0, 500));
-      return NextResponse.json({ error: "Assistant request failed." }, { status: 500 });
-    }
-
-    let parsed: { content?: Array<{ type?: string; text?: string }> };
-    try {
-      parsed = JSON.parse(rawText) as { content?: Array<{ type?: string; text?: string }> };
-    } catch {
-      return NextResponse.json({ error: "Assistant response invalid." }, { status: 500 });
-    }
-
-    const assistantText =
-      parsed.content?.find((block) => block.type === "text")?.text?.trim() ??
-      "Something went wrong.";
-
-    const { error: insertAssistantError } = await supabase.from("chat_messages").insert({
-      thread_id: threadId,
-      role: "assistant",
-      content: assistantText,
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "application/x-ndjson; charset=utf-8",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+      },
     });
-
-    if (insertAssistantError) {
-      console.error("[chat] insert assistant:", insertAssistantError);
-      return NextResponse.json({ error: "Could not save reply." }, { status: 500 });
-    }
-
-    const now = new Date().toISOString();
-    await supabase.from("chat_threads").update({ updated_at: now }).eq("id", threadId);
-
-    const needsTitle = thread.title == null || String(thread.title).trim() === "";
-    if (needsTitle) {
-      void generateAndSaveChatTitle(supabase, threadId).catch((err) => {
-        console.error("[chat] title generation:", err);
-      });
-    }
-
-    return NextResponse.json({ response: assistantText, thread_id: threadId });
   } catch (error) {
     console.error("[chat] unexpected:", error);
     return NextResponse.json({ error: "Something went wrong." }, { status: 500 });

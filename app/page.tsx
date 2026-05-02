@@ -44,6 +44,8 @@ type Entry = {
   created_at: string;
   category: string;
   tags: string[];
+  /** Optimistic row before Supabase insert completes */
+  pending?: boolean;
 };
 
 type SpeechRecognitionResultLike = {
@@ -287,9 +289,8 @@ export default function Home() {
   const [saveNoticeMessage, setSaveNoticeMessage] = useState("");
   const [statsExpanded, setStatsExpanded] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
-  const [saveInlineStatus, setSaveInlineStatus] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [saveRetryDraft, setSaveRetryDraft] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"entries" | "chat">("entries");
   const [chatThreads, setChatThreads] = useState<ChatThreadRow[]>([]);
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
@@ -337,6 +338,8 @@ export default function Home() {
   /** When true, recognition `onend` skips committing transcript (e.g. save stopped the mic). */
   const speechDiscardCommitRef = useRef(false);
   const chatScrollRef = useRef<HTMLDivElement | null>(null);
+  const chatStreamAbortRef = useRef<AbortController | null>(null);
+  const optimisticEntryIdRef = useRef(0);
   const chatComposerRef = useRef<HTMLTextAreaElement | null>(null);
   const chatThreadsAsideInnerRef = useRef<HTMLDivElement | null>(null);
   const chatThreadsListRef = useRef<HTMLUListElement | null>(null);
@@ -503,6 +506,11 @@ export default function Home() {
       return matchesSearch && matchesCategory && matchesTag;
     });
   }, [entries, searchQuery, activeCategory, activeTagFilters]);
+
+  const selectableFilteredEntries = useMemo(
+    () => filteredEntries.filter((e) => !e.pending),
+    [filteredEntries],
+  );
 
   const groupedFilteredEntries = useMemo(
     () =>
@@ -747,8 +755,7 @@ export default function Home() {
       setActiveCategory("all");
       setSearchQuery("");
       setSaveNoticeMessage("");
-      setSaveInlineStatus("");
-      setIsSaving(false);
+      setSaveRetryDraft(null);
       bulkSelectHadSelectionRef.current = false;
       suppressNextEntryRowClickRef.current = false;
       setEntriesSelectMode(false);
@@ -1073,14 +1080,38 @@ export default function Home() {
     await loadChatThreads();
   }
 
-  function revertOptimisticUserMessage(expectedContent: string) {
+  /** Remove optimistic user + assistant pair after a failed streaming chat. */
+  function revertOptimisticChatPair(userContent: string) {
     setThreadMessages((prev) => {
-      const last = prev[prev.length - 1];
-      if (last?.role === "user" && last.content === expectedContent) {
-        return prev.slice(0, -1);
+      if (prev.length < 2) {
+        return prev;
+      }
+      const assistant = prev[prev.length - 1];
+      const userMsg = prev[prev.length - 2];
+      if (
+        userMsg?.role === "user" &&
+        userMsg.content === userContent &&
+        assistant?.role === "assistant"
+      ) {
+        return prev.slice(0, -2);
       }
       return prev;
     });
+  }
+
+  function mapDbRowToEntry(row: Record<string, unknown>): Entry {
+    return {
+      id: Number(row.id),
+      text: String(row.text ?? ""),
+      created_at: String(row.created_at ?? ""),
+      category: String(row.category ?? "other").trim().toLowerCase(),
+      tags: normalizeTagList(row.tags),
+    };
+  }
+
+  function allocateOptimisticEntryId(): number {
+    optimisticEntryIdRef.current -= 1;
+    return optimisticEntryIdRef.current;
   }
 
   async function handleChatSubmit(event?: FormEvent<HTMLFormElement>, presetMessage?: string) {
@@ -1090,6 +1121,11 @@ export default function Home() {
       return;
     }
 
+    const ac = new AbortController();
+    const previous = chatStreamAbortRef.current;
+    chatStreamAbortRef.current = ac;
+    previous?.abort();
+
     setChatInput("");
     const textarea = chatComposerRef.current;
     if (textarea) {
@@ -1097,7 +1133,11 @@ export default function Home() {
     }
 
     setChatError(null);
-    setThreadMessages((prev) => [...prev, { role: "user", content: trimmed }]);
+    setThreadMessages((prev) => [
+      ...prev,
+      { role: "user", content: trimmed },
+      { role: "assistant", content: "" },
+    ]);
     setIsChatSending(true);
 
     queueMicrotask(() => {
@@ -1110,41 +1150,123 @@ export default function Home() {
         credentials: "same-origin",
         headers: {
           "Content-Type": "application/json",
+          Accept: "application/x-ndjson, application/json",
         },
+        signal: ac.signal,
         body: JSON.stringify({
           thread_id: activeThreadId,
           message: trimmed,
         }),
       });
 
-      const payload = (await response.json()) as { response?: string; error?: string; thread_id?: string };
-
       if (response.status === 401) {
         setChatError(t("common.sessionExpired"));
-        revertOptimisticUserMessage(trimmed);
+        revertOptimisticChatPair(trimmed);
         setChatInput(trimmed);
         return;
       }
 
       if (!response.ok) {
-        setChatError(
-          typeof payload.error === "string"
-            ? mapChatApiError(payload.error)
-            : t("common.chatErrorFallback"),
-        );
-        revertOptimisticUserMessage(trimmed);
+        let errMsg = t("common.chatErrorFallback");
+        try {
+          const j = (await response.json()) as { error?: string };
+          if (typeof j.error === "string") {
+            errMsg = mapChatApiError(j.error);
+          }
+        } catch {
+          // ignore
+        }
+        setChatError(errMsg);
+        revertOptimisticChatPair(trimmed);
         setChatInput(trimmed);
         return;
       }
 
-      await loadChatThreads({ silent: true });
-      await fetchThreadMessagesForId(activeThreadId, { silent: true });
-    } catch {
+      const ct = response.headers.get("content-type") ?? "";
+      if (!response.body || !ct.includes("ndjson")) {
+        setChatError(t("common.chatErrorFallback"));
+        revertOptimisticChatPair(trimmed);
+        setChatInput(trimmed);
+        return;
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let streamFailed = false;
+
+      const applyLine = (line: string) => {
+        const s = line.trim();
+        if (!s) {
+          return;
+        }
+        type Nd = { type?: string; text?: string; message?: string };
+        let obj: Nd;
+        try {
+          obj = JSON.parse(s) as Nd;
+        } catch {
+          return;
+        }
+        if (obj.type === "delta" && typeof obj.text === "string") {
+          setThreadMessages((prev) => {
+            const next = [...prev];
+            const last = next[next.length - 1];
+            if (last?.role === "assistant") {
+              next[next.length - 1] = {
+                ...last,
+                content: last.content + obj.text,
+              };
+            }
+            return next;
+          });
+        } else if (obj.type === "error") {
+          streamFailed = true;
+          const msg =
+            typeof obj.message === "string"
+              ? mapChatApiError(obj.message)
+              : t("common.chatErrorFallback");
+          setChatError(msg);
+          revertOptimisticChatPair(trimmed);
+          setChatInput(trimmed);
+        } else if (obj.type === "done") {
+          void loadChatThreads({ silent: true });
+          const tid = activeThreadIdRef.current;
+          if (tid) {
+            void fetchThreadMessagesForId(tid, { silent: true });
+          }
+        }
+      };
+
+      while (!streamFailed) {
+        const { done, value } = await reader.read();
+        if (done) {
+          break;
+        }
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        for (const line of lines) {
+          applyLine(line);
+          if (streamFailed) {
+            break;
+          }
+        }
+      }
+      if (!streamFailed && buffer.trim()) {
+        applyLine(buffer);
+      }
+    } catch (err) {
+      if (err instanceof Error && err.name === "AbortError") {
+        return;
+      }
       setChatError(t("common.networkError"));
-      revertOptimisticUserMessage(trimmed);
+      revertOptimisticChatPair(trimmed);
       setChatInput(trimmed);
     } finally {
-      setIsChatSending(false);
+      if (chatStreamAbortRef.current === ac) {
+        setIsChatSending(false);
+        chatStreamAbortRef.current = null;
+      }
       queueMicrotask(() => {
         chatComposerRef.current?.focus();
       });
@@ -1428,6 +1550,9 @@ export default function Home() {
     if (entriesSelectMode) {
       return;
     }
+    if (entry.pending) {
+      return;
+    }
     if (editingEntryId === entry.id) {
       return;
     }
@@ -1561,12 +1686,15 @@ export default function Home() {
     });
   }
 
-  function handleEntryRowSelectClick(entryId: number) {
+  function handleEntryRowSelectClick(entry: Entry) {
+    if (entry.pending) {
+      return;
+    }
     if (suppressNextEntryRowClickRef.current) {
       suppressNextEntryRowClickRef.current = false;
       return;
     }
-    toggleEntrySelected(entryId);
+    toggleEntrySelected(entry.id);
   }
 
   function handleTabChange(tab: "entries" | "chat") {
@@ -1596,11 +1724,11 @@ export default function Home() {
   }
 
   const allFilteredSelected =
-    filteredEntries.length > 0 &&
-    filteredEntries.every((e) => selectedEntryIds.has(e.id));
+    selectableFilteredEntries.length > 0 &&
+    selectableFilteredEntries.every((e) => selectedEntryIds.has(e.id));
 
   function handleSelectAllFiltered() {
-    setSelectedEntryIds(new Set(filteredEntries.map((e) => e.id)));
+    setSelectedEntryIds(new Set(selectableFilteredEntries.map((e) => e.id)));
   }
 
   function handleDeselectAllFiltered() {
@@ -1608,7 +1736,7 @@ export default function Home() {
   }
 
   async function handleBulkDeleteSelected() {
-    const ids = [...selectedEntryIds];
+    const ids = [...selectedEntryIds].filter((id) => id > 0);
     if (ids.length === 0) {
       return;
     }
@@ -1796,159 +1924,152 @@ export default function Home() {
     event.preventDefault();
 
     const trimmedText = text.trim();
-    if (!trimmedText || isSaving) {
+    if (!trimmedText) {
       return;
     }
 
     const useAutoCategory = newEntryCategorySelection === "auto";
+    const manualCategorySnapshot = newEntryCategorySelection;
+    const tempId = allocateOptimisticEntryId();
+    const optimisticCategorySlug: string = useAutoCategory
+      ? "other"
+      : manualCategorySnapshot;
 
-    setIsSaving(true);
     setErrorMessage(null);
-    setSaveNoticeMessage("");
-    setSaveInlineStatus(useAutoCategory ? t("common.gotIt") : t("common.saving"));
+    setSaveRetryDraft(null);
     stopListening({ discardPendingCommit: true });
 
-    let processedEntries: Array<{ text: string; category: KnownCategory; tags: string[] }> = [
-      { text: trimmedText, category: "other", tags: [] },
-    ];
+    const optimisticEntry: Entry = {
+      id: tempId,
+      text: trimmedText,
+      created_at: new Date().toISOString(),
+      category: optimisticCategorySlug,
+      tags: [],
+      pending: true,
+    };
+    setEntries((prev) => [optimisticEntry, ...prev]);
+    setText("");
+    setNewEntryCategorySelection("auto");
 
-    function abortSave(restoreText: boolean) {
-      if (restoreText) {
-        setText(trimmedText);
-      }
-      setSaveInlineStatus("");
-      setIsSaving(false);
-    }
+    void (async () => {
+      let processedEntries: Array<{ text: string; category: KnownCategory; tags: string[] }> = [
+        { text: trimmedText, category: "other", tags: [] },
+      ];
 
-    try {
-      const processResponse = await fetch("/api/process", {
-        method: "POST",
-        credentials: "same-origin",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          text: trimmedText,
-          manualCategory: newEntryCategorySelection,
-        }),
-      });
+      try {
+        const processResponse = await fetch("/api/process", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            text: trimmedText,
+            manualCategory: manualCategorySnapshot,
+          }),
+        });
 
-      if (processResponse.status === 401) {
-        setErrorMessage(t("common.sessionExpired"));
-        abortSave(true);
-        return;
-      }
+        if (processResponse.status === 401) {
+          setEntries((prev) => prev.filter((e) => e.id !== tempId));
+          setErrorMessage(t("common.sessionExpired"));
+          setText(trimmedText);
+          setSaveRetryDraft(trimmedText);
+          return;
+        }
 
-      if (!processResponse.ok) {
-        const errText = await processResponse.text().catch(() => "");
-        console.error(
-          "[entries save] /api/process HTTP error",
-          processResponse.status,
-          errText.slice(0, 500),
-        );
-      }
+        if (!processResponse.ok) {
+          const errText = await processResponse.text().catch(() => "");
+          console.error(
+            "[entries save] /api/process HTTP error",
+            processResponse.status,
+            errText.slice(0, 500),
+          );
+        }
 
-      if (processResponse.ok) {
-        let result: {
-          acknowledgment?: string;
-          entries?: ProcessApiEntry[];
-        };
-        try {
-          result = (await processResponse.json()) as {
+        if (processResponse.ok) {
+          let result: {
             acknowledgment?: string;
             entries?: ProcessApiEntry[];
           };
-        } catch (parseErr) {
-          console.error("[entries save] invalid JSON from /api/process", parseErr);
-          result = {};
+          try {
+            result = (await processResponse.json()) as {
+              acknowledgment?: string;
+              entries?: ProcessApiEntry[];
+            };
+          } catch (parseErr) {
+            console.error("[entries save] invalid JSON from /api/process", parseErr);
+            result = {};
+          }
+
+          let mappedEntries: Array<{ text: string; category: KnownCategory; tags: string[] }> = [];
+          try {
+            mappedEntries =
+              result.entries
+                ?.map((entry) => ({
+                  text: entry.text?.trim() ?? "",
+                  category: sanitizeCategoryForStorage(entry.category),
+                  tags: normalizeTagList(entry.tags),
+                }))
+                .filter((entry) => entry.text.length > 0) ?? [];
+          } catch (mapErr) {
+            console.error("[entries save] failed to map process entries (tags/categories)", mapErr);
+            mappedEntries = [];
+          }
+
+          if (mappedEntries.length > 0) {
+            processedEntries = mappedEntries;
+          }
         }
-
-        console.log("[entries save] Raw /api/process JSON entries field:", result.entries);
-
-        let mappedEntries: Array<{ text: string; category: KnownCategory; tags: string[] }> = [];
-        try {
-          mappedEntries =
-            result.entries
-              ?.map((entry) => ({
-                text: entry.text?.trim() ?? "",
-                category: sanitizeCategoryForStorage(entry.category),
-                tags: normalizeTagList(entry.tags),
-              }))
-              .filter((entry) => entry.text.length > 0) ?? [];
-        } catch (mapErr) {
-          console.error("[entries save] failed to map process entries (tags/categories)", mapErr);
-          mappedEntries = [];
-        }
-
-        console.log(
-          "[entries save] After normalizeTagList (mappedEntries → will assign processedEntries):",
-          mappedEntries.map((e) => ({ category: e.category, tags: e.tags })),
-        );
-
-        if (mappedEntries.length > 0) {
-          processedEntries = mappedEntries;
-        }
-
-        console.log(
-          "[entries save] Final processedEntries before Supabase loop:",
-          processedEntries.map((e) => ({ category: e.category, tags: e.tags })),
-        );
-
-        if (useAutoCategory) {
-          const ack =
-            typeof result.acknowledgment === "string" && result.acknowledgment.trim().length > 0
-              ? result.acknowledgment.trim()
-              : "Noted";
-          setSaveInlineStatus(ack);
+      } catch (err) {
+        console.error("[entries save] /api/process request failed — inserting fallback rows:", err);
+        if (manualCategorySnapshot !== "auto") {
+          processedEntries = [
+            { text: trimmedText, category: manualCategorySnapshot, tags: [] },
+          ];
         }
       }
-    } catch (err) {
-      console.error("[entries save] /api/process request failed — inserting fallback rows:", err);
-      if (newEntryCategorySelection !== "auto") {
-        processedEntries = [
-          { text: trimmedText, category: newEntryCategorySelection, tags: [] },
-        ];
-      }
-    }
 
-    for (const entry of processedEntries) {
-      const insertPayload = {
-        text: entry.text,
-        category: entry.category,
-        tags: entry.tags,
-      };
-      console.log("[entries save] Supabase insert payload (exact object):", insertPayload);
-      console.log("[entries save] tags array reference:", entry.tags, "length:", entry.tags?.length);
+      const insertedRows: Entry[] = [];
 
-      let error = (await supabase.from("entries").insert(insertPayload)).error;
-
-      if (error) {
-        console.warn("[entries save] first insert error:", error.message, error.code, error);
-      }
-
-      if (error && isMissingTagsColumnError(error)) {
-        console.warn(
-          "[entries save] Retrying insert without tags column (schema missing tags only):",
-          error.message,
-        );
-        ({ error } = await supabase.from("entries").insert({
+      for (const entry of processedEntries) {
+        const insertPayload = {
           text: entry.text,
           category: entry.category,
-        }));
+          tags: entry.tags,
+        };
+
+        let ins = await supabase.from("entries").insert(insertPayload).select("*").single();
+
+        if (ins.error) {
+          console.warn("[entries save] first insert error:", ins.error.message, ins.error.code);
+        }
+
+        if (ins.error && isMissingTagsColumnError(ins.error)) {
+          ins = await supabase
+            .from("entries")
+            .insert({
+              text: entry.text,
+              category: entry.category,
+            })
+            .select("*")
+            .single();
+        }
+
+        if (ins.error || !ins.data) {
+          setEntries((prev) => prev.filter((e) => e.id !== tempId));
+          setErrorMessage(t("common.couldNotSaveEntry"));
+          setSaveRetryDraft(trimmedText);
+          return;
+        }
+
+        insertedRows.push(mapDbRowToEntry(ins.data as Record<string, unknown>));
       }
 
-      if (error) {
-        setErrorMessage(t("common.couldNotSaveEntry"));
-        abortSave(true);
-        return;
-      }
-    }
-
-    setText("");
-    setNewEntryCategorySelection("auto");
-    setSaveInlineStatus("");
-    await loadEntries();
-    setIsSaving(false);
+      setEntries((prev) => {
+        const rest = prev.filter((e) => e.id !== tempId);
+        return [...insertedRows, ...rest];
+      });
+    })();
   }
 
   function handleStartEdit(entry: Entry) {
@@ -2020,6 +2141,14 @@ export default function Home() {
   }
 
   async function handleDeleteEntry(entryId: number) {
+    if (entryId < 0) {
+      return;
+    }
+    const targetEntry = entries.find((e) => e.id === entryId);
+    if (targetEntry?.pending) {
+      return;
+    }
+
     const confirmed = window.confirm(t("common.deleteEntryQ"));
     if (!confirmed) {
       return;
@@ -2053,7 +2182,8 @@ export default function Home() {
   }
 
   const exportableEntries = useMemo(() => {
-    const sourceEntries = exportScope === "filtered" ? filteredEntries : entries;
+    const base = exportScope === "filtered" ? filteredEntries : entries;
+    const sourceEntries = base.filter((entry) => !entry.pending);
 
     return sourceEntries.filter((entry) => {
       const inSelected = selectedExportCategories.some((sel) =>
@@ -2504,8 +2634,7 @@ export default function Home() {
               value={text}
               onChange={(event) => setText(event.target.value)}
               placeholder={t("common.placeholderEntry")}
-              disabled={isSaving}
-              className="min-h-32 w-full resize-y rounded-xl border border-zinc-300 bg-zinc-50 px-3 py-2 pr-14 text-base outline-none transition focus:border-zinc-400 focus:ring-2 focus:ring-zinc-300 disabled:cursor-not-allowed disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-950 dark:focus:border-zinc-500 dark:focus:ring-zinc-700"
+              className="min-h-32 w-full resize-y rounded-xl border border-zinc-300 bg-zinc-50 px-3 py-2 pr-14 text-base outline-none transition focus:border-zinc-400 focus:ring-2 focus:ring-zinc-300 dark:border-zinc-700 dark:bg-zinc-950 dark:focus:border-zinc-500 dark:focus:ring-zinc-700"
             />
             {isMounted && isSpeechSupported ? (
               <button
@@ -2517,7 +2646,6 @@ export default function Home() {
                     startListening();
                   }
                 }}
-                disabled={isSaving}
                 aria-label={isListening ? t("common.voiceStop") : t("common.voiceStart")}
                 className={`absolute bottom-3 right-3 inline-flex h-10 min-w-10 items-center justify-center rounded-full px-3 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${
                   isListening
@@ -2535,11 +2663,10 @@ export default function Home() {
           <button
             type="submit"
             className="mt-4 w-full min-h-12 scroll-mt-4 rounded-xl bg-zinc-900 px-4 py-3 text-base font-semibold text-white transition hover:bg-zinc-700 active:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
-            disabled={!text.trim() || isSaving}
-            aria-busy={isSaving}
+            disabled={!text.trim()}
             aria-live="polite"
           >
-            {isSaving ? saveInlineStatus || t("common.saving") : t("common.save")}
+            {t("common.save")}
           </button>
           <div className="mt-6 space-y-2 border-t border-zinc-200 pt-5 dark:border-zinc-800">
             <p className="text-sm font-medium">{t("common.category")}</p>
@@ -2547,8 +2674,7 @@ export default function Home() {
               <button
                 type="button"
                 onClick={() => setNewEntryCategorySelection("auto")}
-                disabled={isSaving}
-                className={`rounded-full px-3 py-1.5 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
                   newEntryCategorySelection === "auto"
                     ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
                     : "bg-zinc-200 text-zinc-700 hover:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
@@ -2561,8 +2687,7 @@ export default function Home() {
                   key={category}
                   type="button"
                   onClick={() => setNewEntryCategorySelection(category)}
-                  disabled={isSaving}
-                  className={`rounded-full px-3 py-1.5 text-xs font-medium capitalize transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                  className={`rounded-full px-3 py-1.5 text-xs font-medium capitalize transition ${
                     newEntryCategorySelection === category
                       ? categoryBadgeClass(category)
                       : "bg-zinc-200 text-zinc-700 hover:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
@@ -2682,9 +2807,22 @@ export default function Home() {
             </p>
           ) : null}
           {errorMessage ? (
-            <p className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900/70 dark:bg-red-950/30 dark:text-red-200">
-              {errorMessage}
-            </p>
+            <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900/70 dark:bg-red-950/30 dark:text-red-200">
+              <p>{errorMessage}</p>
+              {saveRetryDraft != null ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setText(saveRetryDraft);
+                    setErrorMessage(null);
+                    setSaveRetryDraft(null);
+                  }}
+                  className="mt-3 rounded-lg border border-red-300 bg-white px-3 py-1.5 text-xs font-medium text-red-800 transition hover:bg-red-50 dark:border-red-800 dark:bg-zinc-900 dark:text-red-200 dark:hover:bg-zinc-800"
+                >
+                  {t("common.retry")}
+                </button>
+              ) : null}
+            </div>
           ) : null}
           {isLoading ? (
             <p className="rounded-2xl border border-dashed border-zinc-300 bg-white p-4 text-sm text-zinc-600 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400">
@@ -2870,7 +3008,7 @@ export default function Home() {
                             onPointerLeave={(e) => handleEntryLongPressPointerLeave(e, entry)}
                             onClick={
                               entriesSelectMode
-                                ? () => handleEntryRowSelectClick(entry.id)
+                                ? () => handleEntryRowSelectClick(entry)
                                 : undefined
                             }
                           >
@@ -2883,6 +3021,7 @@ export default function Home() {
                                   <input
                                     type="checkbox"
                                     checked={selectedEntryIds.has(entry.id)}
+                                    disabled={entry.pending}
                                     onChange={() => toggleEntrySelected(entry.id)}
                                     onClick={(e) => e.stopPropagation()}
                                     className="h-4 w-4 rounded border-zinc-400"
@@ -2893,6 +3032,11 @@ export default function Home() {
                                 <div className="flex items-start justify-between gap-3">
                                   <p className="text-xs text-zinc-500 dark:text-zinc-400">
                                     {formatTimestamp(entry.created_at, intlLoc)}
+                                    {entry.pending ? (
+                                      <span className="ml-2 font-medium text-amber-700 dark:text-amber-300">
+                                        {t("common.entrySaving")}
+                                      </span>
+                                    ) : null}
                                   </p>
                                   <div className="flex flex-wrap items-center justify-end gap-2">
                                     {editingEntryId === entry.id && !entriesSelectMode ? (
@@ -2958,7 +3102,11 @@ export default function Home() {
                                             e.stopPropagation();
                                             handleStartEdit(entry);
                                           }}
-                                          disabled={isUpdatingEntry || deletingEntryId === entry.id}
+                                          disabled={
+                                            isUpdatingEntry ||
+                                            deletingEntryId === entry.id ||
+                                            entry.pending
+                                          }
                                           className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-300 bg-zinc-50 text-sm transition hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-950 dark:hover:bg-zinc-900"
                                         >
                                           ✏️
@@ -2970,7 +3118,11 @@ export default function Home() {
                                             e.stopPropagation();
                                             void handleDeleteEntry(entry.id);
                                           }}
-                                          disabled={isUpdatingEntry || deletingEntryId === entry.id}
+                                          disabled={
+                                            isUpdatingEntry ||
+                                            deletingEntryId === entry.id ||
+                                            entry.pending
+                                          }
                                           className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-300 bg-zinc-50 text-sm transition hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-950 dark:hover:bg-zinc-900"
                                         >
                                           {deletingEntryId === entry.id ? "…" : "🗑️"}
@@ -3366,36 +3518,43 @@ export default function Home() {
                     )}
                   </div>
                 ) : null}
-                {threadMessages.map((message, index) => (
-                  <div
-                    key={`${message.role}-${index}-${message.content.length}`}
-                    className={`chat-message-enter flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
-                  >
+                {threadMessages.map((message, index) => {
+                  const showAssistantTypingDots =
+                    message.role === "assistant" &&
+                    index === threadMessages.length - 1 &&
+                    isChatSending &&
+                    message.content === "";
+
+                  return (
                     <div
-                      className={`max-w-[min(100%,24rem)] whitespace-pre-wrap rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
-                        message.role === "user"
-                          ? "bg-blue-600 text-white dark:bg-blue-500"
-                          : "bg-zinc-200 text-zinc-900 dark:bg-zinc-700 dark:text-zinc-100"
-                      }`}
+                      key={`chat-msg-${index}`}
+                      className={`chat-message-enter flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
                     >
-                      {message.content}
+                      <div
+                        className={`max-w-[min(100%,24rem)] whitespace-pre-wrap rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
+                          message.role === "user"
+                            ? "bg-blue-600 text-white dark:bg-blue-500"
+                            : "bg-zinc-200 text-zinc-900 dark:bg-zinc-700 dark:text-zinc-100"
+                        }`}
+                      >
+                        {showAssistantTypingDots ? (
+                          <span
+                            role="status"
+                            aria-live="polite"
+                            aria-label={t("common.assistantTyping")}
+                            className="inline-flex items-center gap-1.5"
+                          >
+                            <span className="chat-typing-dot inline-block h-1.5 w-1.5 rounded-full bg-zinc-500 dark:bg-zinc-300" />
+                            <span className="chat-typing-dot inline-block h-1.5 w-1.5 rounded-full bg-zinc-500 dark:bg-zinc-300" />
+                            <span className="chat-typing-dot inline-block h-1.5 w-1.5 rounded-full bg-zinc-500 dark:bg-zinc-300" />
+                          </span>
+                        ) : (
+                          message.content
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
-                {isChatSending ? (
-                  <div className="chat-message-enter flex justify-start">
-                    <div
-                      role="status"
-                      aria-live="polite"
-                      aria-label={t("common.assistantTyping")}
-                      className="flex max-w-[min(100%,24rem)] items-center gap-1.5 rounded-2xl bg-zinc-200 px-3.5 py-2.5 dark:bg-zinc-700"
-                    >
-                      <span className="chat-typing-dot inline-block h-1.5 w-1.5 rounded-full bg-zinc-500 dark:bg-zinc-300" />
-                      <span className="chat-typing-dot inline-block h-1.5 w-1.5 rounded-full bg-zinc-500 dark:bg-zinc-300" />
-                      <span className="chat-typing-dot inline-block h-1.5 w-1.5 rounded-full bg-zinc-500 dark:bg-zinc-300" />
-                    </div>
-                  </div>
-                ) : null}
+                  );
+                })}
               </div>
               <form
                 onSubmit={(event) => void handleChatSubmit(event)}
