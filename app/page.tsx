@@ -857,9 +857,17 @@ export default function Home() {
     if (activeTab !== "chat") {
       return;
     }
-    chatScrollRef.current?.scrollTo({
-      top: chatScrollRef.current.scrollHeight,
-      behavior: "smooth",
+    const el = chatScrollRef.current;
+    if (!el) {
+      return;
+    }
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        el.scrollTo({
+          top: el.scrollHeight,
+          behavior: "smooth",
+        });
+      });
     });
   }, [threadMessages, isChatSending, activeTab]);
 
@@ -1006,6 +1014,16 @@ export default function Home() {
     await loadChatThreads();
   }
 
+  function revertOptimisticUserMessage(expectedContent: string) {
+    setThreadMessages((prev) => {
+      const last = prev[prev.length - 1];
+      if (last?.role === "user" && last.content === expectedContent) {
+        return prev.slice(0, -1);
+      }
+      return prev;
+    });
+  }
+
   async function handleChatSubmit(event?: FormEvent<HTMLFormElement>, presetMessage?: string) {
     event?.preventDefault();
     const trimmed = (presetMessage ?? chatInput).trim();
@@ -1020,7 +1038,12 @@ export default function Home() {
     }
 
     setChatError(null);
+    setThreadMessages((prev) => [...prev, { role: "user", content: trimmed }]);
     setIsChatSending(true);
+
+    queueMicrotask(() => {
+      chatComposerRef.current?.focus();
+    });
 
     try {
       const response = await fetch("/api/chat", {
@@ -1039,6 +1062,7 @@ export default function Home() {
 
       if (response.status === 401) {
         setChatError("Your session expired. Please sign in again.");
+        revertOptimisticUserMessage(trimmed);
         setChatInput(trimmed);
         return;
       }
@@ -1047,6 +1071,7 @@ export default function Home() {
         setChatError(
           typeof payload.error === "string" ? payload.error : "Something went wrong. Try again.",
         );
+        revertOptimisticUserMessage(trimmed);
         setChatInput(trimmed);
         return;
       }
@@ -1055,9 +1080,13 @@ export default function Home() {
       await fetchThreadMessagesForId(activeThreadId, { silent: true });
     } catch {
       setChatError("Network error. Try again.");
+      revertOptimisticUserMessage(trimmed);
       setChatInput(trimmed);
     } finally {
       setIsChatSending(false);
+      queueMicrotask(() => {
+        chatComposerRef.current?.focus();
+      });
     }
   }
 
@@ -3044,8 +3073,8 @@ export default function Home() {
                 ) : null}
                 {threadMessages.map((message, index) => (
                   <div
-                    key={`${message.role}-${index}`}
-                    className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
+                    key={`${message.role}-${index}-${message.content.length}`}
+                    className={`chat-message-enter flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
                   >
                     <div
                       className={`max-w-[min(100%,24rem)] whitespace-pre-wrap rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
@@ -3059,9 +3088,16 @@ export default function Home() {
                   </div>
                 ))}
                 {isChatSending ? (
-                  <div className="flex justify-start">
-                    <div className="rounded-2xl bg-zinc-200 px-4 py-2.5 text-sm italic text-zinc-600 dark:bg-zinc-700 dark:text-zinc-300">
-                      Thinking…
+                  <div className="chat-message-enter flex justify-start">
+                    <div
+                      role="status"
+                      aria-live="polite"
+                      aria-label="Assistant is typing"
+                      className="flex max-w-[min(100%,24rem)] items-center gap-1.5 rounded-2xl bg-zinc-200 px-3.5 py-2.5 dark:bg-zinc-700"
+                    >
+                      <span className="chat-typing-dot inline-block h-1.5 w-1.5 rounded-full bg-zinc-500 dark:bg-zinc-300" />
+                      <span className="chat-typing-dot inline-block h-1.5 w-1.5 rounded-full bg-zinc-500 dark:bg-zinc-300" />
+                      <span className="chat-typing-dot inline-block h-1.5 w-1.5 rounded-full bg-zinc-500 dark:bg-zinc-300" />
                     </div>
                   </div>
                 ) : null}
@@ -3092,9 +3128,7 @@ export default function Home() {
                       ? "Add entries on the Entries tab first…"
                       : "Ask a question…"
                   }
-                  disabled={
-                    isChatSending || isLoading || entries.length === 0 || !activeThreadId
-                  }
+                  disabled={isLoading || entries.length === 0 || !activeThreadId}
                   className="max-h-40 min-h-11 w-full resize-none rounded-xl border border-zinc-300 bg-zinc-50 px-3 py-2.5 text-base outline-none transition focus:border-zinc-400 focus:ring-2 focus:ring-zinc-300 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-950 dark:focus:border-zinc-500 dark:focus:ring-zinc-700"
                 />
                 <button
