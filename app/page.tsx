@@ -234,6 +234,9 @@ const CATEGORY_LABELS: Record<Category, string> = {
 const ENTRY_LONG_PRESS_MS = 500;
 const ENTRY_LONG_PRESS_MOVE_PX = 10;
 
+const CHAT_SIDEBAR_SWIPE_CLOSE_PX = 50;
+const CHAT_SIDEBAR_SWIPE_LOCK_PX = 12;
+
 function isEntryLongPressIgnoredTarget(target: EventTarget | null): boolean {
   const el = target as HTMLElement | null;
   if (!el?.closest) {
@@ -337,6 +340,17 @@ export default function Home() {
   const speechDiscardCommitRef = useRef(false);
   const chatScrollRef = useRef<HTMLDivElement | null>(null);
   const chatComposerRef = useRef<HTMLTextAreaElement | null>(null);
+  const chatThreadsAsideInnerRef = useRef<HTMLDivElement | null>(null);
+  const chatSidebarOpenRef = useRef(false);
+  const chatSidebarDragPxRef = useRef(0);
+  const chatSidebarSwipeRef = useRef<{
+    startX: number;
+    startY: number;
+    lock: "none" | "h" | "v";
+  }>({ startX: 0, startY: 0, lock: "none" });
+  const [chatSidebarDragPx, setChatSidebarDragPx] = useState(0);
+  const [sidebarSwipeDragging, setSidebarSwipeDragging] = useState(false);
+  const [isMobileViewport, setIsMobileViewport] = useState(false);
 
   const entryLongPressRef = useRef<{
     entryId: number | null;
@@ -592,6 +606,121 @@ export default function Home() {
       subscription.unsubscribe();
     };
   }, []);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 1023px)");
+    const timeoutId = setTimeout(() => {
+      setIsMobileViewport(mq.matches);
+    }, 0);
+    const onChange = () => setIsMobileViewport(mq.matches);
+    mq.addEventListener("change", onChange);
+    return () => {
+      clearTimeout(timeoutId);
+      mq.removeEventListener("change", onChange);
+    };
+  }, []);
+
+  useEffect(() => {
+    chatSidebarOpenRef.current = chatSidebarOpen;
+    chatSidebarDragPxRef.current = chatSidebarDragPx;
+  }, [chatSidebarOpen, chatSidebarDragPx]);
+
+  useEffect(() => {
+    if (!chatSidebarOpen) {
+      chatSidebarDragPxRef.current = 0;
+      const t = setTimeout(() => {
+        setChatSidebarDragPx(0);
+        setSidebarSwipeDragging(false);
+      }, 0);
+      return () => clearTimeout(t);
+    }
+  }, [chatSidebarOpen]);
+
+  useEffect(() => {
+    if (activeTab !== "chat") {
+      return;
+    }
+    const el = chatThreadsAsideInnerRef.current;
+    if (!el) {
+      return;
+    }
+
+    const isPointerMobile = () => window.matchMedia("(max-width: 1023px)").matches;
+
+    function onTouchStart(e: TouchEvent) {
+      if (!isPointerMobile() || !chatSidebarOpenRef.current) {
+        return;
+      }
+      const t = e.touches[0];
+      if (!t) {
+        return;
+      }
+      chatSidebarSwipeRef.current = {
+        startX: t.clientX,
+        startY: t.clientY,
+        lock: "none",
+      };
+    }
+
+    function onTouchMove(e: TouchEvent) {
+      if (!isPointerMobile() || !chatSidebarOpenRef.current) {
+        return;
+      }
+      const t = e.touches[0];
+      if (!t) {
+        return;
+      }
+      const s = chatSidebarSwipeRef.current;
+      const dx = t.clientX - s.startX;
+      const dy = t.clientY - s.startY;
+
+      if (s.lock === "none") {
+        if (
+          Math.abs(dx) < CHAT_SIDEBAR_SWIPE_LOCK_PX &&
+          Math.abs(dy) < CHAT_SIDEBAR_SWIPE_LOCK_PX
+        ) {
+          return;
+        }
+        s.lock = Math.abs(dx) > Math.abs(dy) ? "h" : "v";
+      }
+      if (s.lock !== "h") {
+        return;
+      }
+
+      e.preventDefault();
+      const drag = Math.min(0, dx);
+      chatSidebarDragPxRef.current = drag;
+      setChatSidebarDragPx(drag);
+      setSidebarSwipeDragging(true);
+    }
+
+    function onTouchEnd() {
+      if (!isPointerMobile()) {
+        chatSidebarSwipeRef.current = { startX: 0, startY: 0, lock: "none" };
+        return;
+      }
+      const s = chatSidebarSwipeRef.current;
+      if (s.lock === "h" && chatSidebarDragPxRef.current < -CHAT_SIDEBAR_SWIPE_CLOSE_PX) {
+        setChatSidebarOpen(false);
+      }
+      chatSidebarDragPxRef.current = 0;
+      setChatSidebarDragPx(0);
+      setSidebarSwipeDragging(false);
+      chatSidebarSwipeRef.current = { startX: 0, startY: 0, lock: "none" };
+    }
+
+    el.addEventListener("touchstart", onTouchStart, { capture: true, passive: true });
+    el.addEventListener("touchmove", onTouchMove, { capture: true, passive: false });
+    el.addEventListener("touchend", onTouchEnd, { capture: true, passive: true });
+    el.addEventListener("touchcancel", onTouchEnd, { capture: true, passive: true });
+
+    return () => {
+      el.removeEventListener("touchstart", onTouchStart, { capture: true });
+      el.removeEventListener("touchmove", onTouchMove, { capture: true });
+      el.removeEventListener("touchend", onTouchEnd, { capture: true });
+      el.removeEventListener("touchcancel", onTouchEnd, { capture: true });
+    };
+  }, [activeTab]);
 
   useEffect(() => {
     if (!authHydrated || !session) {
@@ -1681,8 +1810,8 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-zinc-100 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
-      <main className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-8 sm:px-6">
-        <header className="flex flex-wrap items-start justify-between gap-4">
+      <main className="mx-auto flex w-full max-w-6xl flex-col px-4 pb-10 pt-4 sm:px-6">
+        <header className="mb-4 flex flex-wrap items-start justify-between gap-4 sm:mb-5">
           <div className="space-y-1">
             <h1 className="text-2xl font-semibold tracking-tight">Remembrain</h1>
             <p className="text-sm text-zinc-600 dark:text-zinc-400">
@@ -1711,31 +1840,34 @@ export default function Home() {
           </div>
         </header>
 
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => handleTabChange("entries")}
-            className={`rounded-full px-4 py-2 text-sm font-medium transition ${
-              activeTab === "entries"
-                ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
-                : "border border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
-            }`}
-          >
-            Entries
-          </button>
-          <button
-            type="button"
-            onClick={() => handleTabChange("chat")}
-            className={`rounded-full px-4 py-2 text-sm font-medium transition ${
-              activeTab === "chat"
-                ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
-                : "border border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
-            }`}
-          >
-            Chat
-          </button>
+        <div className="sticky top-0 z-40 -mx-4 mb-5 border-b border-zinc-200 bg-zinc-100/95 pb-3 pt-2 backdrop-blur-md supports-[backdrop-filter]:bg-zinc-100/85 dark:border-zinc-800 dark:bg-zinc-950/95 dark:supports-[backdrop-filter]:bg-zinc-950/90 sm:-mx-6 sm:mb-6 sm:px-6 sm:pb-4 sm:pt-3">
+          <div className="grid w-full grid-cols-2 gap-2 px-4 sm:gap-3 sm:px-0">
+            <button
+              type="button"
+              onClick={() => handleTabChange("entries")}
+              className={`min-h-[3rem] rounded-xl px-3 py-3 text-center text-base font-semibold shadow-sm transition focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 dark:shadow-none dark:focus-visible:ring-offset-zinc-950 sm:min-h-[3.25rem] sm:px-5 sm:text-lg ${
+                activeTab === "entries"
+                  ? "bg-emerald-600 text-white shadow-emerald-900/30 ring-2 ring-emerald-700/30 dark:bg-emerald-500 dark:text-white dark:ring-emerald-400/40"
+                  : "border-2 border-zinc-200 bg-white text-zinc-700 hover:border-zinc-300 hover:bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:border-zinc-500 dark:hover:bg-zinc-800"
+              }`}
+            >
+              Entries
+            </button>
+            <button
+              type="button"
+              onClick={() => handleTabChange("chat")}
+              className={`min-h-[3rem] rounded-xl px-3 py-3 text-center text-base font-semibold shadow-sm transition focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 dark:shadow-none dark:focus-visible:ring-offset-zinc-950 sm:min-h-[3.25rem] sm:px-5 sm:text-lg ${
+                activeTab === "chat"
+                  ? "bg-emerald-600 text-white shadow-emerald-900/30 ring-2 ring-emerald-700/30 dark:bg-emerald-500 dark:text-white dark:ring-emerald-400/40"
+                  : "border-2 border-zinc-200 bg-white text-zinc-700 hover:border-zinc-300 hover:bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:border-zinc-500 dark:hover:bg-zinc-800"
+              }`}
+            >
+              Chat
+            </button>
+          </div>
         </div>
 
+        <div className="flex flex-col gap-6">
         {activeTab === "entries" ? (
           <>
             <form
@@ -2241,11 +2373,23 @@ export default function Home() {
               </button>
             </div>
 
-            <aside
-              className={`fixed inset-y-0 left-0 z-50 flex h-full max-h-screen w-[min(20rem,92vw)] flex-col border-r border-zinc-200 bg-white shadow-2xl transition-transform dark:border-zinc-800 dark:bg-zinc-900 lg:static lg:z-0 lg:h-auto lg:max-h-none lg:w-64 lg:shrink-0 lg:rounded-2xl lg:border lg:shadow-sm ${
-                chatSidebarOpen ? "translate-x-0" : "-translate-x-full"
-              } lg:translate-x-0`}
-            >
+            <aside className="fixed inset-y-0 left-0 z-50 flex h-full max-h-screen w-[min(20rem,92vw)] flex-col lg:static lg:z-0 lg:h-auto lg:max-h-none lg:w-64 lg:shrink-0">
+              <div
+                ref={chatThreadsAsideInnerRef}
+                className={`flex h-full max-h-screen w-full flex-col overflow-hidden border-r border-zinc-200 bg-white shadow-2xl dark:border-zinc-800 dark:bg-zinc-900 max-lg:transition-transform max-lg:duration-300 max-lg:ease-out lg:max-h-none lg:rounded-2xl lg:border lg:shadow-sm ${
+                  chatSidebarOpen ? "max-lg:translate-x-0" : "max-lg:-translate-x-full"
+                } lg:translate-x-0`}
+                style={
+                  isMobileViewport &&
+                  chatSidebarOpen &&
+                  (sidebarSwipeDragging || chatSidebarDragPx !== 0)
+                    ? {
+                        transform: `translateX(${chatSidebarDragPx}px)`,
+                        transition: sidebarSwipeDragging ? "none" : undefined,
+                      }
+                    : undefined
+                }
+              >
               <div className="flex items-center justify-between border-b border-zinc-200 p-3 dark:border-zinc-800 lg:rounded-t-2xl">
                 <span className="text-sm font-semibold">Chats</span>
                 <button
@@ -2314,6 +2458,7 @@ export default function Home() {
                   ))
                 )}
               </ul>
+              </div>
             </aside>
 
             <section className="flex min-h-[min(60vh,520px)] min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
@@ -2449,6 +2594,7 @@ export default function Home() {
             </section>
           </div>
         )}
+        </div>
       </main>
       {isExportModalOpen ? (
         <div
