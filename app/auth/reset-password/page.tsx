@@ -113,8 +113,8 @@ export default function ResetPasswordPage() {
   }
 
   return (
-    <div className="min-h-screen bg-black text-white">
-      <main className="mx-auto flex w-full max-w-md flex-col gap-6 px-4 py-12 sm:px-6 sm:py-16">
+    <div className="min-h-screen max-w-full overflow-x-hidden bg-black text-white">
+      <main className="mx-auto flex w-full min-w-0 max-w-md touch-pan-y flex-col gap-6 overflow-x-hidden px-4 py-12 sm:px-6 sm:py-16">
         <header className="space-y-1 text-center">
           <h1 className="rb-display text-white">Remembrain</h1>
           <p className="text-sm text-[#a3a3a3]">Set a new password</p>

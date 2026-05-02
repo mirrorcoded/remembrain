@@ -2104,8 +2104,8 @@ export default function Home() {
       "mt-1 w-full min-h-11 rounded-xl border border-[#1f1f1f] bg-[#0a0a0a] px-[14px] py-2 text-[15px] text-white outline-none transition focus:border-white focus:ring-0";
 
     return (
-      <div className="min-h-screen bg-black text-white">
-        <main className="mx-auto flex w-full max-w-md flex-col gap-8 px-4 py-12 sm:px-6 sm:py-16">
+      <div className="min-h-screen max-w-full overflow-x-hidden bg-black text-white">
+        <main className="mx-auto flex w-full min-w-0 max-w-md touch-pan-y flex-col gap-8 overflow-x-hidden px-4 py-12 sm:px-6 sm:py-16">
           <header className="space-y-1 text-center">
             <h1 className="rb-display text-white">Remembrain</h1>
             <p className="text-[13px] text-[#a3a3a3]">
@@ -2270,8 +2270,8 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen bg-black text-white">
-      <main className="mx-auto flex w-full max-w-6xl flex-col px-4 pb-10 pt-4 sm:px-6">
+    <div className="min-h-screen max-w-full overflow-x-hidden bg-black text-white">
+      <main className="mx-auto flex w-full min-w-0 max-w-6xl touch-pan-y flex-col overflow-x-hidden px-4 pb-10 pt-4 sm:px-6">
         <header className="mb-8 flex flex-wrap items-start justify-between gap-4 sm:mb-8">
           <div className="space-y-2">
             <h1 className="rb-display text-white">Remembrain</h1>
@@ -2293,11 +2293,11 @@ export default function Home() {
         </header>
 
         <div
-          className={`sticky top-0 z-[60] -mx-4 mb-8 border-b border-[#1f1f1f] bg-black/95 pb-3 pt-2 backdrop-blur-md supports-[backdrop-filter]:bg-black/90 sm:-mx-6 sm:mb-8 sm:px-6 sm:pb-4 sm:pt-3 max-lg:transition-opacity ${
+          className={`sticky top-0 z-[60] -mx-4 mb-8 max-w-[100vw] min-w-0 border-b border-[#1f1f1f] bg-black/95 pb-3 pt-2 backdrop-blur-md supports-[backdrop-filter]:bg-black/90 sm:-mx-6 sm:mb-8 sm:px-6 sm:pb-4 sm:pt-3 max-lg:transition-opacity ${
             activeTab === "chat" && chatSidebarOpen && isMobileViewport ? "max-lg:hidden" : ""
           }`}
         >
-          <div className="grid w-full grid-cols-2 gap-3 px-4 sm:gap-3 sm:px-0">
+          <div className="grid min-w-0 w-full grid-cols-2 gap-3 px-4 sm:gap-3 sm:px-0">
             <button
               type="button"
               onClick={() => handleTabChange("entries")}
@@ -2323,7 +2323,7 @@ export default function Home() {
           </div>
         </div>
 
-        <div key={activeTab} className="rb-tab-pane flex flex-col gap-8">
+        <div key={activeTab} className="rb-tab-pane flex min-w-0 max-w-full flex-col gap-8">
         {activeTab === "entries" ? (
           <>
             <form
@@ -2340,7 +2340,7 @@ export default function Home() {
                     value={text}
                     onChange={(event) => setText(event.target.value)}
                     placeholder={t("common.placeholderEntry")}
-                    className="textarea-empty-inner max-h-[min(40vh,280px)] min-h-[8rem] w-full resize-none overflow-y-auto rounded-xl border border-[#1f1f1f] bg-[#0a0a0a] px-[14px] py-[14px] pr-16 text-[15px] leading-relaxed text-white outline-none transition focus:border-white focus:ring-0"
+                    className="textarea-empty-inner max-h-[min(40vh,280px)] min-h-[8rem] min-w-0 w-full resize-none overflow-y-auto break-words rounded-xl border border-[#1f1f1f] bg-[#0a0a0a] px-[14px] py-[14px] pr-16 text-[15px] leading-relaxed text-white outline-none transition focus:border-white focus:ring-0"
                   />
                   {isMounted && isSpeechSupported ? (
                     <button
@@ -2460,7 +2460,7 @@ export default function Home() {
                     <span>{statsDailyMax}</span>
                     <span>0</span>
                   </div>
-                  <div className="min-w-0 flex-1 overflow-x-auto">
+                  <div className="min-w-0 max-w-full flex-1 touch-pan-x overflow-x-auto [-webkit-overflow-scrolling:touch]">
                     <div className="flex min-h-[112px] flex-row items-end gap-px pb-1">
                       {statsLast30Days.map((day) => (
                         <div
@@ -2597,7 +2597,7 @@ export default function Home() {
                         </button>
                       ) : null}
                     </div>
-                    <div className="-mx-1 flex gap-2 overflow-x-auto pb-1 pt-0.5">
+                    <div className="-mx-1 flex max-w-full min-w-0 touch-pan-x gap-2 overflow-x-auto pb-1 pt-0.5 [-webkit-overflow-scrolling:touch]">
                       {tagFrequencyList.map(({ tag, count }) => {
                         const selected = activeTagFilters.some(
                           (s) => s.toLowerCase() === tag.toLowerCase(),
@@ -2844,7 +2844,7 @@ export default function Home() {
                                       value={editingText}
                                       onChange={(event) => setEditingText(event.target.value)}
                                       onClick={(e) => e.stopPropagation()}
-                                      className="textarea-empty-inner mt-2 min-h-24 max-h-[min(40vh,280px)] w-full resize-y overflow-y-auto rounded-xl border border-[#1f1f1f] bg-[#0a0a0a] px-[14px] py-[14px] text-[15px] text-white outline-none transition focus:border-white focus:ring-0"
+                                      className="textarea-empty-inner mt-2 min-h-24 max-h-[min(40vh,280px)] min-w-0 w-full resize-y overflow-y-auto break-words rounded-xl border border-[#1f1f1f] bg-[#0a0a0a] px-[14px] py-[14px] text-[15px] text-white outline-none transition focus:border-white focus:ring-0"
                                     />
                                     <div
                                       className="mt-2 flex flex-wrap gap-1.5"
@@ -2935,7 +2935,7 @@ export default function Home() {
                                   </>
                                 ) : (
                                   <>
-                                    <p className="mt-2 whitespace-pre-wrap text-[15px] leading-relaxed text-white">
+                                    <p className="rb-wrap-text mt-2 min-w-0 whitespace-pre-wrap text-[15px] leading-relaxed text-white">
                                       {entry.text}
                                     </p>
                                   </>
@@ -2954,7 +2954,7 @@ export default function Home() {
         </section>
           </>
         ) : (
-          <div className="flex w-full min-w-0 flex-col gap-3 lg:min-h-[min(80vh,800px)] lg:flex-row lg:items-stretch lg:gap-4">
+          <div className="flex w-full min-w-0 max-w-full touch-pan-y flex-col gap-3 overflow-x-hidden lg:min-h-[min(80vh,800px)] lg:flex-row lg:items-stretch lg:gap-4">
             {/* Right-edge dim strip (~22%): tap to close; tabs/chat peek through underneath */}
             {chatSidebarOpen ? (
               <button
@@ -3116,7 +3116,7 @@ export default function Home() {
               ) : null}
               <div
                 ref={chatScrollRef}
-                className="relative flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-3 py-4 sm:px-4"
+                className="relative flex min-h-0 min-w-0 max-w-full touch-pan-y flex-1 flex-col gap-3 overflow-x-hidden overflow-y-auto px-3 py-4 sm:px-4"
               >
                 {threadMessagesLoading ? (
                   <p className="py-6 text-center text-sm text-[#6b6b6b]">{t("common.loadingMessages")}</p>
@@ -3206,10 +3206,10 @@ export default function Home() {
                   return (
                     <div
                       key={`chat-msg-${index}`}
-                      className={`chat-message-enter flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
+                      className={`chat-message-enter flex min-w-0 w-full ${message.role === "user" ? "justify-end" : "justify-start"}`}
                     >
                       <div
-                        className={`max-w-[min(100%,24rem)] whitespace-pre-wrap rounded-[17px] px-4 py-2.5 text-[15px] leading-[1.45] shadow-[0_2px_12px_rgba(0,0,0,0.35)] ${
+                        className={`rb-wrap-text max-w-[80%] min-w-0 whitespace-pre-wrap rounded-[17px] px-4 py-2.5 text-[15px] leading-[1.45] shadow-[0_2px_12px_rgba(0,0,0,0.35)] ${
                           message.role === "user"
                             ? "bg-white text-black"
                             : "bg-[#1f1f1f] text-white"
@@ -3261,7 +3261,7 @@ export default function Home() {
                       : t("common.askPlaceholder")
                   }
                   disabled={isLoading || entries.length === 0 || !activeThreadId}
-                  className="textarea-empty-inner max-h-40 min-h-11 w-full resize-none rounded-xl border border-[#1f1f1f] bg-[#0a0a0a] px-[14px] py-[14px] text-[15px] text-white outline-none transition focus:border-white focus:ring-0 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="textarea-empty-inner max-h-40 min-h-11 min-w-0 w-full resize-none break-words rounded-xl border border-[#1f1f1f] bg-[#0a0a0a] px-[14px] py-[14px] text-[15px] text-white outline-none transition focus:border-white focus:ring-0 disabled:cursor-not-allowed disabled:opacity-50"
                 />
                 <button
                   type="submit"

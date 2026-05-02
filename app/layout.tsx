@@ -37,6 +37,11 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  viewportFit: "cover",
   themeColor: "#000000",
   colorScheme: "dark",
 };
@@ -51,7 +56,7 @@ export default function RootLayout({
       lang="en"
       className={`dark ${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="flex min-h-full flex-col bg-black text-white">
+      <body className="flex min-h-full max-w-full touch-pan-y flex-col overflow-x-hidden bg-black text-white">
         <Providers>{children}</Providers>
         <ServiceWorkerRegistration />
       </body>
