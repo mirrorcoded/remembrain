@@ -280,7 +280,9 @@ export default function Home() {
   const [isChatSending, setIsChatSending] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
   const [suggestedChatQuestions, setSuggestedChatQuestions] = useState<string[]>([]);
-  const [suggestedQuestionsLoading, setSuggestedQuestionsLoading] = useState(false);
+  /** True while suggested-questions fetch is in flight (subtle skeleton only; never blocks input). */
+  const [suggestionsFetchPending, setSuggestionsFetchPending] = useState(false);
+  const [suggestionsReveal, setSuggestionsReveal] = useState(false);
   const [session, setSession] = useState<Session | null>(null);
   const [authHydrated, setAuthHydrated] = useState(false);
   const [authEmail, setAuthEmail] = useState("");
@@ -305,6 +307,9 @@ export default function Home() {
   const speechDiscardCommitRef = useRef(false);
   const chatScrollRef = useRef<HTMLDivElement | null>(null);
   const chatStreamAbortRef = useRef<AbortController | null>(null);
+  const suggestedQuestionsAbortRef = useRef<AbortController | null>(null);
+  const chatInputSuggestionGateRef = useRef("");
+  const threadMessagesLenSuggestionRef = useRef(0);
   const optimisticEntryIdRef = useRef(0);
   const chatComposerRef = useRef<HTMLTextAreaElement | null>(null);
   const chatThreadsAsideInnerRef = useRef<HTMLDivElement | null>(null);
@@ -339,6 +344,9 @@ export default function Home() {
   const suppressNextEntryRowClickRef = useRef(false);
   /** Once true in the current select-mode session, auto-exit when selection becomes empty. */
   const bulkSelectHadSelectionRef = useRef(false);
+
+  chatInputSuggestionGateRef.current = chatInput;
+  threadMessagesLenSuggestionRef.current = threadMessages.length;
 
   const statsCategoryRows = useMemo(() => {
     const counts: Record<KnownCategory, number> = {
@@ -709,7 +717,7 @@ export default function Home() {
       setSaveNoticeMessage("");
       setSaveRetryDraft(null);
       setSuggestedChatQuestions([]);
-      setSuggestedQuestionsLoading(false);
+      setSuggestionsFetchPending(false);
       bulkSelectHadSelectionRef.current = false;
       suppressNextEntryRowClickRef.current = false;
       setEntriesSelectMode(false);
@@ -949,20 +957,27 @@ export default function Home() {
       threadMessages.length > 0 ||
       threadMessagesLoading ||
       isChatSending ||
-      entries.length === 0
+      entries.length === 0 ||
+      chatInput.trim().length > 0
     ) {
       return;
     }
 
-    let cancelled = false;
-    setSuggestedQuestionsLoading(true);
+    const threadIdAtStart = activeThreadId;
+    const ac = new AbortController();
+    suggestedQuestionsAbortRef.current?.abort();
+    suggestedQuestionsAbortRef.current = ac;
+
+    setSuggestionsFetchPending(true);
     setSuggestedChatQuestions([]);
+    setSuggestionsReveal(false);
 
     void (async () => {
       try {
         const res = await fetch("/api/suggested-questions", {
           method: "POST",
           credentials: "same-origin",
+          signal: ac.signal,
         });
         const data = (await res.json()) as { questions?: unknown };
         const raw = Array.isArray(data.questions) ? data.questions : [];
@@ -971,22 +986,38 @@ export default function Home() {
           .map((q) => q.trim())
           .filter((q) => q.length > 0)
           .slice(0, 6);
-        if (!cancelled) {
-          setSuggestedChatQuestions(qs);
+
+        if (ac.signal.aborted) {
+          return;
         }
-      } catch {
-        if (!cancelled) {
-          setSuggestedChatQuestions([]);
+        if (activeThreadIdRef.current !== threadIdAtStart) {
+          return;
+        }
+        if (chatInputSuggestionGateRef.current.trim().length > 0) {
+          return;
+        }
+        if (threadMessagesLenSuggestionRef.current > 0) {
+          return;
+        }
+
+        setSuggestedChatQuestions(qs);
+      } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") {
+          return;
+        }
+        if (err instanceof Error && err.name === "AbortError") {
+          return;
         }
       } finally {
-        if (!cancelled) {
-          setSuggestedQuestionsLoading(false);
+        if (!ac.signal.aborted) {
+          setSuggestionsFetchPending(false);
         }
       }
     })();
 
     return () => {
-      cancelled = true;
+      ac.abort();
+      setSuggestionsFetchPending(false);
     };
   }, [
     activeTab,
@@ -995,7 +1026,17 @@ export default function Home() {
     threadMessagesLoading,
     isChatSending,
     entries.length,
+    chatInput,
   ]);
+
+  useEffect(() => {
+    if (suggestedChatQuestions.length === 0) {
+      setSuggestionsReveal(false);
+      return;
+    }
+    const id = requestAnimationFrame(() => setSuggestionsReveal(true));
+    return () => cancelAnimationFrame(id);
+  }, [suggestedChatQuestions]);
 
   function adjustChatComposerHeight() {
     const el = chatComposerRef.current;
@@ -1013,10 +1054,10 @@ export default function Home() {
       setChatError(t("common.couldNotCreateChat"));
       return;
     }
-    if (entries.length > 0) {
-      setSuggestedChatQuestions([]);
-      setSuggestedQuestionsLoading(true);
-    }
+    suggestedQuestionsAbortRef.current?.abort();
+    setSuggestedChatQuestions([]);
+    setSuggestionsFetchPending(false);
+    setSuggestionsReveal(false);
     setChatSidebarOpen(false);
     setActiveThreadId(data.id);
     setThreadMessages([]);
@@ -1081,6 +1122,9 @@ export default function Home() {
     if (!trimmed || isChatSending || entries.length === 0 || !activeThreadId) {
       return;
     }
+
+    suggestedQuestionsAbortRef.current?.abort();
+    setSuggestionsFetchPending(false);
 
     const ac = new AbortController();
     const previous = chatStreamAbortRef.current;
@@ -1235,6 +1279,8 @@ export default function Home() {
   }
 
   function handleSuggestedQuestion(question: string) {
+    suggestedQuestionsAbortRef.current?.abort();
+    setSuggestionsFetchPending(false);
     void handleChatSubmit(undefined, question);
   }
 
@@ -3113,38 +3159,34 @@ export default function Home() {
                 !isChatSending &&
                 !threadMessagesLoading &&
                 entries.length > 0 ? (
-                  <div className="space-y-3 py-4">
-                    <p className="text-center text-sm text-zinc-500 dark:text-zinc-400">
-                      {suggestedQuestionsLoading ? t("common.findingSuggestions") : t("common.tryAsking")}
-                    </p>
-                    {suggestedQuestionsLoading ? (
+                  <div className="min-h-0 shrink-0 px-2 pb-2 pt-1">
+                    {suggestionsFetchPending && suggestedChatQuestions.length === 0 ? (
                       <div
-                        className="mx-auto grid w-full max-w-2xl grid-cols-1 gap-2 sm:grid-cols-2"
-                        aria-busy="true"
-                        aria-label={t("common.findingSuggestions")}
+                        className="mx-auto max-w-2xl space-y-2 py-2 opacity-60"
+                        aria-hidden
                       >
-                        {Array.from({ length: 6 }, (_, i) => (
-                          <div key={`suggestion-skel-${i}`} className="suggestion-pill-skeleton w-full" />
-                        ))}
+                        <div className="h-1.5 w-[42%] max-w-[11rem] rounded-full bg-zinc-200/80 dark:bg-zinc-700/50" />
+                        <div className="h-1.5 w-[30%] max-w-[8rem] rounded-full bg-zinc-200/70 dark:bg-zinc-700/40" />
                       </div>
-                    ) : suggestedChatQuestions.length > 0 ? (
-                      <div className="mx-auto grid w-full max-w-2xl grid-cols-1 gap-2 sm:grid-cols-2">
+                    ) : null}
+                    {suggestedChatQuestions.length > 0 ? (
+                      <div
+                        className={`mx-auto grid max-w-xl grid-cols-1 gap-1.5 transition-opacity duration-300 ease-out sm:grid-cols-2 sm:gap-x-2 sm:gap-y-1.5 ${
+                          suggestionsReveal ? "opacity-100" : "opacity-0"
+                        }`}
+                      >
                         {suggestedChatQuestions.map((q, index) => (
                           <button
                             key={`${index}-${q.slice(0, 80)}`}
                             type="button"
                             onClick={() => handleSuggestedQuestion(q)}
-                            className="rounded-full border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-left text-sm leading-snug text-zinc-800 transition hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-200 dark:hover:bg-zinc-900"
+                            className="rounded-full border border-zinc-200/90 bg-zinc-50/90 px-3 py-1.5 text-left text-xs leading-snug text-zinc-600 transition hover:bg-zinc-100/90 dark:border-zinc-700/80 dark:bg-zinc-900/60 dark:text-zinc-400 dark:hover:bg-zinc-800/80"
                           >
                             {q}
                           </button>
                         ))}
                       </div>
-                    ) : (
-                      <p className="text-center text-sm text-zinc-600 dark:text-zinc-400">
-                        {t("common.askQuestionBelow")}
-                      </p>
-                    )}
+                    ) : null}
                   </div>
                 ) : null}
                 {threadMessages.map((message, index) => {
