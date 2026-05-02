@@ -76,10 +76,36 @@ export function greetingLineForUser(user: User): string {
 
 const HANGUL_RUN = /^[가-힣]+$/;
 
+/** Two-syllable Korean family names (compound surnames). Strip these before single-syllable heuristic. */
+const COMPOUND_KOREAN_SURNAMES = [
+  "남궁",
+  "황보",
+  "제갈",
+  "사공",
+  "선우",
+  "서문",
+  "독고",
+  "동방",
+] as const;
+
+function stripHangulFamilyFromSingleToken(single: string): string {
+  if (!HANGUL_RUN.test(single) || single.length < 2) {
+    return single;
+  }
+  for (const compound of COMPOUND_KOREAN_SURNAMES) {
+    if (single.startsWith(compound) && single.length > compound.length) {
+      return single.slice(compound.length);
+    }
+  }
+  if (single.length >= 3) {
+    return single.slice(1);
+  }
+  return single;
+}
+
 /**
- * Given name for Korean third-person journal rewrite (스토어드 display_name 기준).
- * Heuristics: "김 단비" → 단비; three-syllable 한글 한 덩어리 "김단비" → 단비 (첫 글자 성 제거);
- * 서양식 "Eric Bae" → Eric; given만 "단비"(2글자) → 그대로 단비.
+ * Given name for third-person journal rewrite (display_name 기준). Same extraction for English or Korean UI.
+ * Heuristics: "김 단비" → 단비; "김단비" → 단비; "남궁수범" → 수범; "Eric Bae" → Eric; given만 "단비" → 단비.
  */
 export function derivedGivenNameForThirdPerson(displayNameFull: string): string {
   const raw = displayNameFull.trim();
@@ -107,8 +133,8 @@ export function derivedGivenNameForThirdPerson(displayNameFull: string): string 
   }
 
   const single = parts[0] ?? raw;
-  if (HANGUL_RUN.test(single) && single.length >= 3) {
-    return single.slice(1);
+  if (HANGUL_RUN.test(single)) {
+    return stripHangulFamilyFromSingleToken(single);
   }
 
   return single;

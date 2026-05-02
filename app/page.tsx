@@ -222,29 +222,6 @@ function formatShortThreadDate(iso: string, intlLoc: string): string {
   }).format(new Date(iso));
 }
 
-const PULL_REFRESH_THRESHOLD_PX = 80;
-const PULL_REFRESH_MAX_DRAG_PX = 120;
-
-function RefreshGlyph({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      viewBox="0 0 24 24"
-      width="20"
-      height="20"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <path d="M21 12a9 9 0 1 1-6.84-8.75" />
-      <path d="M21 3v6h-6" />
-    </svg>
-  );
-}
-
 export default function Home() {
   const { t, locale } = useI18n();
   const intlLoc = intlLocaleForUi(locale);
@@ -304,13 +281,6 @@ export default function Home() {
   const [chatError, setChatError] = useState<string | null>(null);
   const [suggestedChatQuestions, setSuggestedChatQuestions] = useState<string[]>([]);
   const [suggestedQuestionsLoading, setSuggestedQuestionsLoading] = useState(false);
-  const [entriesRefreshing, setEntriesRefreshing] = useState(false);
-  const [chatHeaderRefreshing, setChatHeaderRefreshing] = useState(false);
-  const [entriesPullPx, setEntriesPullPx] = useState(0);
-  const [threadsPullPx, setThreadsPullPx] = useState(0);
-  const [chatMessagesPullPx, setChatMessagesPullPx] = useState(0);
-  const [threadsPullBusy, setThreadsPullBusy] = useState(false);
-  const [chatMessagesPullBusy, setChatMessagesPullBusy] = useState(false);
   const [session, setSession] = useState<Session | null>(null);
   const [authHydrated, setAuthHydrated] = useState(false);
   const [authEmail, setAuthEmail] = useState("");
@@ -339,9 +309,6 @@ export default function Home() {
   const chatComposerRef = useRef<HTMLTextAreaElement | null>(null);
   const chatThreadsAsideInnerRef = useRef<HTMLDivElement | null>(null);
   const chatThreadsListRef = useRef<HTMLUListElement | null>(null);
-  const entriesPullPxRef = useRef(0);
-  const threadsPullPxRef = useRef(0);
-  const chatMessagesPullPxRef = useRef(0);
   const chatSidebarOpenRef = useRef(false);
   const chatSidebarDragPxRef = useRef(0);
   const chatSidebarSwipeRef = useRef<{
@@ -561,9 +528,7 @@ export default function Home() {
 
   const loadEntries = useCallback(async (options?: { silent?: boolean }) => {
     const silent = options?.silent ?? false;
-    if (silent) {
-      setEntriesRefreshing(true);
-    } else {
+    if (!silent) {
       setIsLoading(true);
     }
     setErrorMessage(null);
@@ -576,9 +541,7 @@ export default function Home() {
     if (error) {
       console.error("[entries] load failed:", error.message, error);
       setErrorMessage(t("common.couldNotLoadEntries"));
-      if (silent) {
-        setEntriesRefreshing(false);
-      } else {
+      if (!silent) {
         setIsLoading(false);
       }
       return;
@@ -596,9 +559,7 @@ export default function Home() {
     });
 
     setEntries(normalizedEntries);
-    if (silent) {
-      setEntriesRefreshing(false);
-    } else {
+    if (!silent) {
       setIsLoading(false);
     }
   }, [t]);
@@ -1277,256 +1238,6 @@ export default function Home() {
     void handleChatSubmit(undefined, question);
   }
 
-  async function handleHeaderRefresh() {
-    if (activeTab === "entries") {
-      await loadEntries({ silent: true });
-      return;
-    }
-    setChatHeaderRefreshing(true);
-    try {
-      await loadChatThreads({ silent: true });
-      const tid = activeThreadIdRef.current;
-      if (tid) {
-        await fetchThreadMessagesForId(tid, { silent: true });
-      }
-    } finally {
-      setChatHeaderRefreshing(false);
-    }
-  }
-
-  useEffect(() => {
-    if (activeTab !== "entries" || isExportModalOpen) {
-      return;
-    }
-    const ptr = { startY: 0, active: false };
-    const touchTargetIgnored = (target: EventTarget | null) => {
-      const el = target instanceof Element ? target : null;
-      return Boolean(el?.closest("textarea, input, select, button, a, [role='slider']"));
-    };
-    function onTouchStart(e: TouchEvent) {
-      if (touchTargetIgnored(e.target)) {
-        return;
-      }
-      if (window.scrollY > 8) {
-        return;
-      }
-      ptr.startY = e.touches[0]?.clientY ?? 0;
-      ptr.active = true;
-    }
-    function onTouchMove(e: TouchEvent) {
-      if (!ptr.active || window.scrollY > 8) {
-        return;
-      }
-      const dy = (e.touches[0]?.clientY ?? 0) - ptr.startY;
-      if (dy > 0) {
-        e.preventDefault();
-        const px = Math.min(dy, PULL_REFRESH_MAX_DRAG_PX);
-        entriesPullPxRef.current = px;
-        setEntriesPullPx(px);
-      }
-    }
-    async function onTouchEnd() {
-      if (!ptr.active) {
-        return;
-      }
-      ptr.active = false;
-      const px = entriesPullPxRef.current;
-      entriesPullPxRef.current = 0;
-      setEntriesPullPx(0);
-      if (px >= PULL_REFRESH_THRESHOLD_PX) {
-        await loadEntries({ silent: true });
-      }
-    }
-    document.addEventListener("touchstart", onTouchStart, { passive: true });
-    document.addEventListener("touchmove", onTouchMove, { passive: false });
-    document.addEventListener("touchend", onTouchEnd);
-    document.addEventListener("touchcancel", onTouchEnd);
-    return () => {
-      document.removeEventListener("touchstart", onTouchStart);
-      document.removeEventListener("touchmove", onTouchMove);
-      document.removeEventListener("touchend", onTouchEnd);
-      document.removeEventListener("touchcancel", onTouchEnd);
-    };
-  }, [activeTab, isExportModalOpen, loadEntries]);
-
-  useEffect(() => {
-    const threadsPanelOpen = !isMobileViewport || chatSidebarOpen;
-    if (activeTab !== "chat" || !threadsPanelOpen) {
-      return;
-    }
-    const listEl = chatThreadsListRef.current;
-    if (!listEl) {
-      return;
-    }
-    const ptr = {
-      startY: 0,
-      startX: 0,
-      active: false,
-      lock: "none" as "none" | "h" | "v",
-    };
-    function onTouchStart(e: TouchEvent) {
-      const t = e.touches[0];
-      if (!t) {
-        return;
-      }
-      ptr.startY = t.clientY;
-      ptr.startX = t.clientX;
-      ptr.active = true;
-      ptr.lock = "none";
-    }
-    function onTouchMove(e: TouchEvent) {
-      if (!ptr.active) {
-        return;
-      }
-      const t = e.touches[0];
-      if (!t) {
-        return;
-      }
-      const scrollEl = chatThreadsListRef.current;
-      if (!scrollEl || scrollEl.scrollTop > 1) {
-        ptr.active = false;
-        threadsPullPxRef.current = 0;
-        setThreadsPullPx(0);
-        return;
-      }
-      const dy = t.clientY - ptr.startY;
-      const dx = t.clientX - ptr.startX;
-      if (ptr.lock === "none") {
-        if (Math.abs(dx) < 8 && Math.abs(dy) < 8) {
-          return;
-        }
-        ptr.lock = Math.abs(dx) > Math.abs(dy) ? "h" : "v";
-      }
-      if (ptr.lock === "h") {
-        return;
-      }
-      if (dy > 0) {
-        e.preventDefault();
-        const px = Math.min(dy, PULL_REFRESH_MAX_DRAG_PX);
-        threadsPullPxRef.current = px;
-        setThreadsPullPx(px);
-      }
-    }
-    async function onTouchEnd() {
-      if (!ptr.active) {
-        return;
-      }
-      ptr.active = false;
-      ptr.lock = "none";
-      const px = threadsPullPxRef.current;
-      threadsPullPxRef.current = 0;
-      setThreadsPullPx(0);
-      if (px >= PULL_REFRESH_THRESHOLD_PX) {
-        setThreadsPullBusy(true);
-        try {
-          await loadChatThreads({ silent: true });
-        } finally {
-          setThreadsPullBusy(false);
-        }
-      }
-    }
-    listEl.addEventListener("touchstart", onTouchStart, { passive: true });
-    listEl.addEventListener("touchmove", onTouchMove, { passive: false });
-    listEl.addEventListener("touchend", onTouchEnd);
-    listEl.addEventListener("touchcancel", onTouchEnd);
-    return () => {
-      listEl.removeEventListener("touchstart", onTouchStart);
-      listEl.removeEventListener("touchmove", onTouchMove);
-      listEl.removeEventListener("touchend", onTouchEnd);
-      listEl.removeEventListener("touchcancel", onTouchEnd);
-    };
-  }, [activeTab, chatSidebarOpen, isMobileViewport, loadChatThreads]);
-
-  useEffect(() => {
-    if (activeTab !== "chat" || !activeThreadId) {
-      return;
-    }
-    const chatPaneEl = chatScrollRef.current;
-    if (!chatPaneEl) {
-      return;
-    }
-    const ptr = {
-      startY: 0,
-      startX: 0,
-      active: false,
-      lock: "none" as "none" | "h" | "v",
-    };
-    function onTouchStart(e: TouchEvent) {
-      const t = e.touches[0];
-      if (!t) {
-        return;
-      }
-      ptr.startY = t.clientY;
-      ptr.startX = t.clientX;
-      ptr.active = true;
-      ptr.lock = "none";
-    }
-    function onTouchMove(e: TouchEvent) {
-      if (!ptr.active) {
-        return;
-      }
-      const t = e.touches[0];
-      if (!t) {
-        return;
-      }
-      const scrollEl = chatScrollRef.current;
-      if (!scrollEl || scrollEl.scrollTop > 1) {
-        ptr.active = false;
-        chatMessagesPullPxRef.current = 0;
-        setChatMessagesPullPx(0);
-        return;
-      }
-      const dy = t.clientY - ptr.startY;
-      const dx = t.clientX - ptr.startX;
-      if (ptr.lock === "none") {
-        if (Math.abs(dx) < 8 && Math.abs(dy) < 8) {
-          return;
-        }
-        ptr.lock = Math.abs(dx) > Math.abs(dy) ? "h" : "v";
-      }
-      if (ptr.lock === "h") {
-        return;
-      }
-      if (dy > 0) {
-        e.preventDefault();
-        const px = Math.min(dy, PULL_REFRESH_MAX_DRAG_PX);
-        chatMessagesPullPxRef.current = px;
-        setChatMessagesPullPx(px);
-      }
-    }
-    async function onTouchEnd() {
-      if (!ptr.active) {
-        return;
-      }
-      ptr.active = false;
-      ptr.lock = "none";
-      const px = chatMessagesPullPxRef.current;
-      chatMessagesPullPxRef.current = 0;
-      setChatMessagesPullPx(0);
-      if (px >= PULL_REFRESH_THRESHOLD_PX) {
-        const tid = activeThreadIdRef.current;
-        if (tid) {
-          setChatMessagesPullBusy(true);
-          try {
-            await fetchThreadMessagesForId(tid, { silent: true });
-          } finally {
-            setChatMessagesPullBusy(false);
-          }
-        }
-      }
-    }
-    chatPaneEl.addEventListener("touchstart", onTouchStart, { passive: true });
-    chatPaneEl.addEventListener("touchmove", onTouchMove, { passive: false });
-    chatPaneEl.addEventListener("touchend", onTouchEnd);
-    chatPaneEl.addEventListener("touchcancel", onTouchEnd);
-    return () => {
-      chatPaneEl.removeEventListener("touchstart", onTouchStart);
-      chatPaneEl.removeEventListener("touchmove", onTouchMove);
-      chatPaneEl.removeEventListener("touchend", onTouchEnd);
-      chatPaneEl.removeEventListener("touchcancel", onTouchEnd);
-    };
-  }, [activeTab, activeThreadId, fetchThreadMessagesForId]);
-
   function clearEntryLongPressTimerOnly() {
     const s = entryLongPressRef.current;
     if (s.timerId !== null) {
@@ -1748,14 +1459,14 @@ export default function Home() {
     const { error } = await supabase.from("entries").delete().in("id", ids);
     if (error) {
       setErrorMessage(t("common.settingsCouldNotDeleteEntries"));
-      await loadEntries();
+      await loadEntries({ silent: true });
       return;
     }
     suppressNextEntryRowClickRef.current = false;
     bulkSelectHadSelectionRef.current = false;
     setSelectedEntryIds(new Set());
     setEntriesSelectMode(false);
-    await loadEntries();
+    await loadEntries({ silent: true });
   }
 
   async function handleLogout() {
@@ -2137,7 +1848,7 @@ export default function Home() {
     }
 
     handleCancelEdit();
-    await loadEntries();
+    await loadEntries({ silent: true });
   }
 
   async function handleDeleteEntry(entryId: number) {
@@ -2169,7 +1880,7 @@ export default function Home() {
       handleCancelEdit();
     }
 
-    await loadEntries();
+    await loadEntries({ silent: true });
     setDeletingEntryId(null);
   }
 
@@ -2523,26 +2234,6 @@ export default function Home() {
             <p className="text-sm text-zinc-600 dark:text-zinc-400">{t("common.captureSubtitle")}</p>
           </div>
           <div className="flex shrink-0 flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => void handleHeaderRefresh()}
-              disabled={
-                (activeTab === "entries" && entriesRefreshing) ||
-                (activeTab === "chat" && chatHeaderRefreshing)
-              }
-              className="inline-flex h-10 min-w-10 items-center justify-center rounded-full border border-zinc-300 bg-white text-sm transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-900 dark:hover:bg-zinc-800"
-              aria-label={activeTab === "entries" ? t("common.refreshEntries") : t("common.refreshChat")}
-              title={activeTab === "entries" ? t("common.refreshEntries") : t("common.refreshChat")}
-            >
-              <RefreshGlyph
-                className={`h-5 w-5 text-zinc-700 dark:text-zinc-200 ${
-                  (activeTab === "entries" && entriesRefreshing) ||
-                  (activeTab === "chat" && chatHeaderRefreshing)
-                    ? "animate-spin"
-                    : ""
-                }`}
-              />
-            </button>
             <Link
               href="/settings"
               className="inline-flex h-10 min-w-10 items-center justify-center rounded-full border border-zinc-300 bg-white px-3 text-sm transition hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:hover:bg-zinc-800"
@@ -2590,33 +2281,6 @@ export default function Home() {
             </button>
           </div>
         </div>
-
-        {activeTab === "entries" && (entriesPullPx > 0 || entriesRefreshing) ? (
-          <div
-            className="pointer-events-none fixed inset-x-0 z-[61] flex justify-center"
-            style={{
-              top: "calc(env(safe-area-inset-top, 0px) + 6.75rem)",
-            }}
-          >
-            <div
-              className={`rounded-full border border-zinc-200/80 bg-white/95 p-2 shadow-sm dark:border-zinc-700 dark:bg-zinc-900/95 ${
-                entriesRefreshing || entriesPullPx >= PULL_REFRESH_THRESHOLD_PX ? "animate-spin" : ""
-              }`}
-              style={{
-                opacity: entriesRefreshing
-                  ? 1
-                  : Math.min(1, entriesPullPx / PULL_REFRESH_THRESHOLD_PX),
-                transform: `translateY(${Math.min(entriesPullPx * 0.4, 36)}px)`,
-                transition:
-                  entriesPullPx === 0 && !entriesRefreshing
-                    ? "opacity 0.2s ease, transform 0.2s ease"
-                    : undefined,
-              }}
-            >
-              <RefreshGlyph className="h-5 w-5 text-zinc-600 dark:text-zinc-300" />
-            </div>
-          </div>
-        ) : null}
 
         <div className="flex flex-col gap-6">
         {activeTab === "entries" ? (
@@ -3335,25 +2999,6 @@ export default function Home() {
                   </button>
                 </div>
                 <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-                  {threadsPullPx > 0 || threadsPullBusy ? (
-                    <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex justify-center pt-2">
-                      <div
-                        className={`rounded-full border border-zinc-200/80 bg-white/95 p-2 shadow-sm dark:border-zinc-700 dark:bg-zinc-900/95 ${
-                          threadsPullBusy || threadsPullPx >= PULL_REFRESH_THRESHOLD_PX
-                            ? "animate-spin"
-                            : ""
-                        }`}
-                        style={{
-                          opacity: threadsPullBusy
-                            ? 1
-                            : Math.min(1, threadsPullPx / PULL_REFRESH_THRESHOLD_PX),
-                          transform: `translateY(${Math.min(threadsPullPx * 0.35, 28)}px)`,
-                        }}
-                      >
-                        <RefreshGlyph className="h-5 w-5 text-zinc-600 dark:text-zinc-300" />
-                      </div>
-                    </div>
-                  ) : null}
                   <ul
                     ref={chatThreadsListRef}
                     className="flex min-h-0 flex-1 flex-col space-y-1 overflow-y-auto p-2 pt-0 pb-[max(0.5rem,env(safe-area-inset-bottom))]"
@@ -3424,25 +3069,6 @@ export default function Home() {
                 ref={chatScrollRef}
                 className="relative flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-3 py-4 sm:px-4"
               >
-                {chatMessagesPullPx > 0 || chatMessagesPullBusy ? (
-                  <div className="pointer-events-none sticky top-0 z-10 -mt-2 mb-1 flex shrink-0 justify-center py-2">
-                    <div
-                      className={`rounded-full border border-zinc-200/80 bg-white/95 p-2 shadow-sm dark:border-zinc-700 dark:bg-zinc-900/95 ${
-                        chatMessagesPullBusy || chatMessagesPullPx >= PULL_REFRESH_THRESHOLD_PX
-                          ? "animate-spin"
-                          : ""
-                      }`}
-                      style={{
-                        opacity: chatMessagesPullBusy
-                          ? 1
-                          : Math.min(1, chatMessagesPullPx / PULL_REFRESH_THRESHOLD_PX),
-                        transform: `translateY(${Math.min(chatMessagesPullPx * 0.35, 28)}px)`,
-                      }}
-                    >
-                      <RefreshGlyph className="h-5 w-5 text-zinc-600 dark:text-zinc-300" />
-                    </div>
-                  </div>
-                ) : null}
                 {threadMessagesLoading ? (
                   <p className="py-6 text-center text-sm text-zinc-500">{t("common.loadingMessages")}</p>
                 ) : null}

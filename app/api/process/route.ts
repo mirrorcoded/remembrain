@@ -86,59 +86,85 @@ function parseEntriesFromModelText(modelText: string): {
   }
 }
 
+function givenNameIdentificationBlock(profileDisplay: string, authorGivenName: string): string {
+  return `AUTHOR IDENTITY (before STEP 4 third-person rewrite):
+
+PROFILE DISPLAY_NAME from this user's account: ${profileDisplay}
+AUTHOR_GIVEN_NAME you MUST use for this request when naming the journal author: ${authorGivenName}
+
+Before rewriting first-person to third-person, identify the user's GIVEN NAME from their display_name. For THIS request, AUTHOR_GIVEN_NAME is already set to "${authorGivenName}" above — use ONLY that string (not the full unsplit Korean name like 배수범 when given name is 수범).
+
+Reference rules (same extraction regardless of UI language):
+- English names (e.g. 'Eric Bae'): given name is the FIRST word → Eric from Eric Bae.
+- Korean names as one string without spaces: family names are typically ONE syllable (one Hangul character), sometimes TWO for compound surnames (남궁, 황보, 제갈, 사공, 선우, 서문, 독고, 동방). The given name is everything AFTER the family name.
+  - 배수범 → family 배, given 수범 → use 수범
+  - 김단비 → family 김, given 단비 → use 단비
+  - 남궁수범 → family 남궁, given 수범 → use 수범
+  - If the stored name is a single syllable alone (given only), use the whole thing.
+- Mixed / spaced: '배 수범' → 수범
+- Single English word: 'Eric' → Eric
+
+Use AUTHOR_GIVEN_NAME when rewriting:
+- English-mode entry text: 'I love soccer' → '${authorGivenName} loves soccer' (also when display_name is Korean but user writes in English)
+- Korean-mode entry text: use AUTHOR_GIVEN_NAME plus Korean particles (이는/는/가/를/의/랑 등 per 받침 rules in the Korean STEP 4 block).
+
+Given-name extraction does NOT change between English and Korean UI; only grammar (English vs Korean structure) and Korean particles differ.`;
+}
+
 function thirdPersonInstructionBlock(
-  userName: string,
+  givenName: string,
   pronounsLine: string,
   examplePossessive: string,
 ): string {
-  return `STEP 4 - Third person (apply to EACH entry after steps 1–3):
-After cleaning typos, splitting multi-topic input into separate entries (if applicable), and categorizing, rewrite EVERY resulting entry's text to third person using USER NAME and USER PRONOUNS below. For multi-topic splits, perform STEP 4 independently on each split entry—do not leave any entry in first person.
+  return `STEP 4 - Third person — English / Latin-alphabet entry text (apply to EACH entry after steps 1–3):
 
-USER NAME: ${userName}
+After cleaning typos, splitting multi-topic input into separate entries (if applicable), and categorizing, rewrite EVERY resulting entry's text to third person using AUTHOR_GIVEN_NAME and USER PRONOUNS below. For multi-topic splits, perform STEP 4 independently on each split entry—do not leave any entry in first person.
+
+AUTHOR_GIVEN_NAME: ${givenName}
 USER PRONOUNS: ${pronounsLine}
 
-PRONOUN REPLACEMENT - Be thorough. Replace ALL first-person references meant as the journal author (the user), including informal spellings and typos. Use USER NAME and the subject/object/possessive forms implied by USER PRONOUNS.
+PRONOUN REPLACEMENT - Be thorough. Replace ALL first-person references meant as the journal author (the user), including informal spellings and typos. Use AUTHOR_GIVEN_NAME and the subject/object/possessive forms implied by USER PRONOUNS. Never use the full Korean display string (e.g. 배수범) when AUTHOR_GIVEN_NAME is 수범.
 
-Subject pronouns and contractions (map to ${userName} + correct verb form; fix casing and apostrophes):
-- I → ${userName}
-- I'm, im, Im, I am → ${userName} is (or ${userName} was/were when tense requires)
-- I've, ive, I have → ${userName} has or ${userName} had (match tense)
-- I'll, ill, I will → ${userName} will or ${userName} would (match tense/modality)
-- I'd, id → ${userName} would, ${userName} had, or ${userName} should as context requires
-- Lowercase i as a subject pronoun → ${userName}
+Subject pronouns and contractions (map to ${givenName} + correct verb form; fix casing and apostrophes):
+- I → ${givenName}
+- I'm, im, Im, I am → ${givenName} is (or ${givenName} was/were when tense requires)
+- I've, ive, I have → ${givenName} has or ${givenName} had (match tense)
+- I'll, ill, I will → ${givenName} will or ${givenName} would (match tense/modality)
+- I'd, id → ${givenName} would, ${givenName} had, or ${givenName} should as context requires
+- Lowercase i as a subject pronoun → ${givenName}
 
 Object pronouns (use object form from USER PRONOUNS, e.g. him/her/them):
 - me → him/her/them as appropriate
 - myself → himself/herself/themselves as appropriate
 
 Possessive and determiners:
-- my, mine → ${userName}'s or his/her/their per USER PRONOUNS and grammar (e.g. '${examplePossessive} birthday')
+- my, mine → ${givenName}'s or his/her/their per USER PRONOUNS and grammar (e.g. '${examplePossessive} birthday')
 - Catch informal spellings: myne, mi when clearly meaning "my/mine" → rewrite correctly
 
-Verb conjugation after replacing I with ${userName} (third person singular/plural as appropriate):
-- I am → ${userName} is (or was)
-- I have → ${userName} has (or had)
-- I do → ${userName} does (or did)
-- I think → ${userName} thinks (or thought)
-- I love → ${userName} loves (or loved)
-- im glad / I'm glad → ${userName} is glad (etc.)
+Verb conjugation after replacing I with ${givenName} (third person singular/plural as appropriate):
+- I am → ${givenName} is (or was)
+- I have → ${givenName} has (or had)
+- I do → ${givenName} does (or did)
+- I think → ${givenName} thinks (or thought)
+- I love → ${givenName} loves (or loved)
+- im glad / I'm glad → ${givenName} is glad (etc.)
 
 Multiple occurrences: If a sentence has several first-person forms (e.g. multiple "I" or "I'm"), replace ALL of them, not only the first.
 
 Informal & typo examples (adjust pronouns to USER PRONOUNS; names below illustrate pattern):
-- 'I'm glad I am 31 years old' → '${userName} is glad ${userName} is 31 years old'
-- 'im going to the store' → '${userName} is going to the store'
-- 'i love my wife and i think shes amazing' → '${userName} loves his wife and ${userName} thinks she's amazing' (or equivalent with her/their pronouns)
-- 'me and dan bi went hiking' → '${userName} and Dan Bi went hiking' or 'Dan Bi and ${userName} went hiking'
-- 'i was tired so i took a nap' → '${userName} was tired so ${userName} took a nap'
-- 'me too' in author voice → '${userName} too' or rephrase (e.g. '${userName} agrees') only if it preserves meaning
-- 'thats myne' → 'that's ${userName}'s' or equivalent possessive per USER PRONOUNS
+- 'I'm glad I am 31 years old' → '${givenName} is glad ${givenName} is 31 years old'
+- 'im going to the store' → '${givenName} is going to the store'
+- 'i love my wife and i think shes amazing' → '${givenName} loves his wife and ${givenName} thinks she's amazing' (or equivalent with her/their pronouns)
+- 'me and dan bi went hiking' → '${givenName} and Dan Bi went hiking' or 'Dan Bi and ${givenName} went hiking'
+- 'i was tired so i took a nap' → '${givenName} was tired so ${givenName} took a nap'
+- 'me too' in author voice → '${givenName} too' or rephrase (e.g. '${givenName} agrees') only if it preserves meaning
+- 'thats myne' → 'that's ${givenName}'s' or equivalent possessive per USER PRONOUNS
 
 Guardrails:
 - Do not change words inside quotation marks if they represent someone else's speech.
 - Do not change first- or second-person when the writer is clearly quoting or describing another person's words.
 - Do not replace pronouns that refer to other people (e.g. "she" for the user's partner stays when it refers to that person, not the author).
-- If the user already wrote their own name in the entry, avoid doubling it awkwardly (e.g. '${userName} and Dan Bi' not '${userName} and ${userName} and Dan Bi').
+- If the user already wrote their own name in the entry, avoid doubling it awkwardly (e.g. '${givenName} and Dan Bi' not '${givenName} and ${givenName} and Dan Bi').
 - Preserve meaning and tone; do not add facts that were not in the original.
 - If there is genuinely no first-person author reference left to rewrite, leave wording unchanged aside from step 1 cleanup.`;
 }
@@ -209,22 +235,22 @@ Example (Korean entry):
 {"entries":[{"text":"...","category":"relationships","tags":["댄비","하이킹"]}]}`;
 
 function buildAutoSystemPrompt(
-  userName: string,
   pronounsLine: string,
   examplePossessive: string,
   uiLocale: UiLocale,
   profileDisplay: string,
-  authorGivenKo: string,
+  authorGivenName: string,
   topicParticleKo: string,
 ): string {
+  const idBlock = givenNameIdentificationBlock(profileDisplay, authorGivenName);
   const thirdBlock =
     uiLocale === "ko"
-      ? koreanThirdPersonInstructionBlock({
+      ? `${idBlock}\n\n${koreanThirdPersonInstructionBlock({
           profileDisplay,
-          authorGivenName: authorGivenKo,
+          authorGivenName,
           topicParticleExample: topicParticleKo,
-        })
-      : thirdPersonInstructionBlock(userName, pronounsLine, examplePossessive);
+        })}`
+      : `${idBlock}\n\n${thirdPersonInstructionBlock(authorGivenName, pronounsLine, examplePossessive)}`;
   const tagBlock = uiLocale === "ko" ? TAG_EXTRACTION_BLOCK_KO : TAG_EXTRACTION_BLOCK;
   const ackLang =
     uiLocale === "ko"
@@ -279,23 +305,23 @@ Return ONLY valid JSON, no markdown fences:
 }
 
 function buildManualSystemPrompt(
-  userName: string,
   pronounsLine: string,
   examplePossessive: string,
   fixedCategory: KnownCategory,
   uiLocale: UiLocale,
   profileDisplay: string,
-  authorGivenKo: string,
+  authorGivenName: string,
   topicParticleKo: string,
 ): string {
+  const idBlock = givenNameIdentificationBlock(profileDisplay, authorGivenName);
   const thirdBlock =
     uiLocale === "ko"
-      ? koreanThirdPersonInstructionBlock({
+      ? `${idBlock}\n\n${koreanThirdPersonInstructionBlock({
           profileDisplay,
-          authorGivenName: authorGivenKo,
+          authorGivenName,
           topicParticleExample: topicParticleKo,
-        })
-      : thirdPersonInstructionBlock(userName, pronounsLine, examplePossessive);
+        })}`
+      : `${idBlock}\n\n${thirdPersonInstructionBlock(authorGivenName, pronounsLine, examplePossessive)}`;
   const tagBlock = uiLocale === "ko" ? TAG_EXTRACTION_BLOCK_KO : TAG_EXTRACTION_BLOCK;
 
   return `You are processing a single journal entry for a personal memory app.
@@ -439,22 +465,22 @@ export async function POST(request: Request) {
   const displayNameFull = displayNameFromUser(auth.user);
   const userName = processingDisplayName(auth.user);
   const pronounsLine = pronounsLabelFromUser(auth.user);
-  const examplePossessive = possessiveExample(userName);
 
-  const derivedKoGiven = derivedGivenNameForThirdPerson(displayNameFull);
-  const authorGivenKo =
-    derivedKoGiven.trim().length > 0 ? derivedKoGiven.trim() : userName.trim();
+  const derivedGiven = derivedGivenNameForThirdPerson(displayNameFull);
+  const authorGivenName =
+    derivedGiven.trim().length > 0 ? derivedGiven.trim() : userName.trim();
   const profileDisplay =
     displayNameFull.trim().length > 0 ? displayNameFull.trim() : userName.trim() || "User";
+  const examplePossessive = possessiveExample(authorGivenName);
   const topicParticleKo =
-    uiLocale === "ko" ? koreanTopicParticlePhrase(authorGivenKo) : "";
+    uiLocale === "ko" ? koreanTopicParticlePhrase(authorGivenName) : "";
 
   console.log("[process] auth_context", {
     user_id: auth.user.id,
     display_name_raw: displayNameFull.length > 0 ? displayNameFull : "(empty)",
     pronouns: pronounsLine,
     ui_locale: uiLocale,
-    author_given_ko: authorGivenKo,
+    author_given_name: authorGivenName,
     topic_particle_example: topicParticleKo || "(n/a)",
   });
 
@@ -482,13 +508,12 @@ export async function POST(request: Request) {
       }
 
       const system = buildManualSystemPrompt(
-        userName,
         pronounsLine,
         examplePossessive,
         category,
         uiLocale,
         profileDisplay,
-        authorGivenKo,
+        authorGivenName,
         topicParticleKo,
       );
       const { ok, modelText } = await callAnthropicProcess(apiKey, system, originalText);
@@ -527,12 +552,11 @@ export async function POST(request: Request) {
     }
 
     const system = buildAutoSystemPrompt(
-      userName,
       pronounsLine,
       examplePossessive,
       uiLocale,
       profileDisplay,
-      authorGivenKo,
+      authorGivenName,
       topicParticleKo,
     );
     debugProcess("Auto mode, input length:", originalText.length);
