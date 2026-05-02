@@ -64,7 +64,7 @@ export default function SettingsPage() {
   const [deleteAllError, setDeleteAllError] = useState<string | null>(null);
 
   const [defaultCategory, setDefaultCategory] = useState<DefaultCategoryPreference>("auto");
-  const [statsExpandedDefault, setStatsExpandedDefault] = useState(true);
+  const [statsExpandedDefault, setStatsExpandedDefault] = useState(false);
   const [prefsBusy, setPrefsBusy] = useState(false);
   const [prefsNotice, setPrefsNotice] = useState<string | null>(null);
 

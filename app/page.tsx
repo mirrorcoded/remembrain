@@ -1,7 +1,15 @@
 "use client";
 
 import type { Session } from "@supabase/supabase-js";
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  FormEvent,
+  type PointerEvent as ReactPointerEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import Link from "next/link";
 
 import {
@@ -223,6 +231,21 @@ const CATEGORY_LABELS: Record<Category, string> = {
   other: "Other",
 };
 
+const ENTRY_LONG_PRESS_MS = 500;
+const ENTRY_LONG_PRESS_MOVE_PX = 10;
+
+function isEntryLongPressIgnoredTarget(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null;
+  if (!el?.closest) {
+    return false;
+  }
+  return Boolean(
+    el.closest(
+      "button, a, input, select, textarea, label, [data-entry-longpress-ignore]",
+    ),
+  );
+}
+
 function formatShortThreadDate(iso: string): string {
   return new Intl.DateTimeFormat("en-US", {
     month: "short",
@@ -275,7 +298,7 @@ export default function Home() {
   );
   const [copyFeedback, setCopyFeedback] = useState("");
   const [saveNoticeMessage, setSaveNoticeMessage] = useState("");
-  const [statsExpanded, setStatsExpanded] = useState(true);
+  const [statsExpanded, setStatsExpanded] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [saveInlineStatus, setSaveInlineStatus] = useState("");
@@ -314,6 +337,24 @@ export default function Home() {
   const speechDiscardCommitRef = useRef(false);
   const chatScrollRef = useRef<HTMLDivElement | null>(null);
   const chatComposerRef = useRef<HTMLTextAreaElement | null>(null);
+
+  const entryLongPressRef = useRef<{
+    entryId: number | null;
+    timerId: ReturnType<typeof setTimeout> | null;
+    completed: boolean;
+    startX: number;
+    startY: number;
+    pointerId: number | null;
+  }>({
+    entryId: null,
+    timerId: null,
+    completed: false,
+    startX: 0,
+    startY: 0,
+    pointerId: null,
+  });
+  const [pressingEntryId, setPressingEntryId] = useState<number | null>(null);
+  const suppressNextEntryRowClickRef = useRef(false);
 
   const statsCategoryRows = useMemo(() => {
     const counts: Record<Category, number> = {
@@ -741,6 +782,150 @@ export default function Home() {
     void handleChatSubmit(undefined, question);
   }
 
+  function clearEntryLongPressTimerOnly() {
+    const s = entryLongPressRef.current;
+    if (s.timerId !== null) {
+      clearTimeout(s.timerId);
+      s.timerId = null;
+    }
+  }
+
+  function resetEntryLongPressTracking() {
+    clearEntryLongPressTimerOnly();
+    entryLongPressRef.current.entryId = null;
+    entryLongPressRef.current.completed = false;
+    entryLongPressRef.current.pointerId = null;
+    setPressingEntryId(null);
+  }
+
+  function handleEntryLongPressPointerDown(
+    event: ReactPointerEvent<HTMLLIElement>,
+    entry: Entry,
+  ) {
+    if (entriesSelectMode) {
+      return;
+    }
+    if (editingEntryId === entry.id) {
+      return;
+    }
+    if (event.pointerType === "mouse" && event.button !== 0) {
+      return;
+    }
+    if (isEntryLongPressIgnoredTarget(event.target)) {
+      return;
+    }
+
+    resetEntryLongPressTracking();
+
+    entryLongPressRef.current.entryId = entry.id;
+    entryLongPressRef.current.completed = false;
+    entryLongPressRef.current.startX = event.clientX;
+    entryLongPressRef.current.startY = event.clientY;
+    entryLongPressRef.current.pointerId = event.pointerId;
+
+    setPressingEntryId(entry.id);
+
+    const timerId = setTimeout(() => {
+      entryLongPressRef.current.timerId = null;
+      entryLongPressRef.current.completed = true;
+      try {
+        if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
+          navigator.vibrate(40);
+        }
+      } catch {
+        // ignore
+      }
+      suppressNextEntryRowClickRef.current = true;
+      setEntriesSelectMode(true);
+      setSelectedEntryIds(new Set([entry.id]));
+    }, ENTRY_LONG_PRESS_MS);
+    entryLongPressRef.current.timerId = timerId;
+
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      // ignore
+    }
+  }
+
+  function handleEntryLongPressPointerMove(
+    event: ReactPointerEvent<HTMLLIElement>,
+    entry: Entry,
+  ) {
+    if (entriesSelectMode) {
+      return;
+    }
+    const s = entryLongPressRef.current;
+    if (s.entryId !== entry.id || s.completed || s.pointerId !== event.pointerId) {
+      return;
+    }
+    const dx = Math.abs(event.clientX - s.startX);
+    const dy = Math.abs(event.clientY - s.startY);
+    if (dx > ENTRY_LONG_PRESS_MOVE_PX || dy > ENTRY_LONG_PRESS_MOVE_PX) {
+      clearEntryLongPressTimerOnly();
+      entryLongPressRef.current.entryId = null;
+      entryLongPressRef.current.completed = false;
+      entryLongPressRef.current.pointerId = null;
+      setPressingEntryId(null);
+      try {
+        if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+          event.currentTarget.releasePointerCapture(event.pointerId);
+        }
+      } catch {
+        // ignore
+      }
+    }
+  }
+
+  function handleEntryLongPressPointerEnd(
+    event: ReactPointerEvent<HTMLLIElement>,
+    entry: Entry,
+  ) {
+    const s = entryLongPressRef.current;
+    if (s.entryId !== entry.id || s.pointerId !== event.pointerId) {
+      return;
+    }
+
+    clearEntryLongPressTimerOnly();
+    entryLongPressRef.current.entryId = null;
+    entryLongPressRef.current.completed = false;
+    entryLongPressRef.current.pointerId = null;
+    setPressingEntryId(null);
+
+    try {
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  function handleEntryLongPressPointerLeave(
+    event: ReactPointerEvent<HTMLLIElement>,
+    entry: Entry,
+  ) {
+    const s = entryLongPressRef.current;
+    if (s.entryId !== entry.id || s.pointerId !== event.pointerId || s.completed) {
+      return;
+    }
+    if (event.pointerType !== "mouse") {
+      return;
+    }
+    clearEntryLongPressTimerOnly();
+    entryLongPressRef.current.entryId = null;
+    entryLongPressRef.current.completed = false;
+    entryLongPressRef.current.pointerId = null;
+    setPressingEntryId(null);
+    try {
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }
+    } catch {
+      // ignore
+    }
+  }
+
   function toggleEntrySelected(entryId: number) {
     setSelectedEntryIds((prev) => {
       const next = new Set(prev);
@@ -753,8 +938,17 @@ export default function Home() {
     });
   }
 
+  function handleEntryRowSelectClick(entryId: number) {
+    if (suppressNextEntryRowClickRef.current) {
+      suppressNextEntryRowClickRef.current = false;
+      return;
+    }
+    toggleEntrySelected(entryId);
+  }
+
   function handleTabChange(tab: "entries" | "chat") {
     if (tab !== "entries") {
+      suppressNextEntryRowClickRef.current = false;
       setEntriesSelectMode(false);
       setSelectedEntryIds(new Set());
     }
@@ -770,6 +964,7 @@ export default function Home() {
       setEntriesSelectMode(true);
       return;
     }
+    suppressNextEntryRowClickRef.current = false;
     setSelectedEntryIds(new Set());
     setEntriesSelectMode(false);
   }
@@ -804,6 +999,7 @@ export default function Home() {
       await loadEntries();
       return;
     }
+    suppressNextEntryRowClickRef.current = false;
     setSelectedEntryIds(new Set());
     setEntriesSelectMode(false);
     await loadEntries();
@@ -1848,12 +2044,21 @@ export default function Home() {
                         {group.entries.map((entry) => (
                           <li
                             key={entry.id}
-                            className={`rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900 ${
+                            className={`touch-manipulation rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm transition-transform duration-150 will-change-transform dark:border-zinc-800 dark:bg-zinc-900 ${
                               entriesSelectMode ? "cursor-pointer" : ""
+                            } ${
+                              pressingEntryId === entry.id
+                                ? "scale-[0.985] ring-2 ring-zinc-400/90 dark:ring-zinc-500"
+                                : ""
                             }`}
+                            onPointerDown={(e) => handleEntryLongPressPointerDown(e, entry)}
+                            onPointerMove={(e) => handleEntryLongPressPointerMove(e, entry)}
+                            onPointerUp={(e) => handleEntryLongPressPointerEnd(e, entry)}
+                            onPointerCancel={(e) => handleEntryLongPressPointerEnd(e, entry)}
+                            onPointerLeave={(e) => handleEntryLongPressPointerLeave(e, entry)}
                             onClick={
                               entriesSelectMode
-                                ? () => toggleEntrySelected(entry.id)
+                                ? () => handleEntryRowSelectClick(entry.id)
                                 : undefined
                             }
                           >
@@ -1897,6 +2102,7 @@ export default function Home() {
                                       </select>
                                     ) : (
                                       <span
+                                        data-entry-longpress-ignore
                                         className={`inline-flex rounded-full px-2 py-1 text-xs font-medium ${CATEGORY_BADGE_STYLES[entry.category]}`}
                                       >
                                         {CATEGORY_LABELS[entry.category]}

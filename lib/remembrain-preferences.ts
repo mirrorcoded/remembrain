@@ -54,16 +54,16 @@ export function writeDefaultCategoryPreference(value: DefaultCategoryPreference)
   }
 }
 
-/** When true, Entries tab stats panel starts expanded on load. Default true when unset. */
+/** When true, Entries tab stats panel starts expanded on load. Default collapsed when unset. */
 export function readStatsExpandedPreference(): boolean {
   try {
     const raw = localStorage.getItem(PREF_STATS_EXPANDED_KEY);
     if (raw === null) {
-      return true;
+      return false;
     }
     return raw === "true";
   } catch {
-    return true;
+    return false;
   }
 }
 
