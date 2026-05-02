@@ -1,5 +1,6 @@
 import { generateAndSaveChatTitle } from "@/lib/chat-title";
 import { getRelevantContext } from "@/lib/retrieval";
+import { normalizeUserLocale, translate } from "@/lib/i18n";
 import { getAuthenticatedSupabase } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 
@@ -22,6 +23,7 @@ export async function POST(request: Request) {
     }
 
     const { supabase, user } = auth;
+    const uiLocale = normalizeUserLocale(user.user_metadata?.ui_locale);
 
     const { data: thread, error: threadError } = await supabase
       .from("chat_threads")
@@ -67,13 +69,20 @@ export async function POST(request: Request) {
     const entriesBlock =
       context.trim().length > 0
         ? context
-        : "(No journal entries yet — tell the user they haven't added entries.)";
+        : translate(uiLocale, "common.noJournalEntries");
 
     const todayIsoDate = new Date().toISOString().slice(0, 10);
+
+    const languageInstruction =
+      uiLocale === "ko"
+        ? `Respond in Korean. Use natural Korean and an appropriate politeness level for a helpful assistant. Even if some journal excerpts are in English or mixed, reply in Korean (you may quote English phrases from entries when needed).`
+        : `Respond in English. Even if some journal excerpts are in another language, reply in English (you may quote non-English phrases from entries when needed).`;
 
     const systemPrompt = `You are a memory assistant for the user. Answer based on their entries below.
 
 Today's date (for age, "next birthday," and relative date math): ${todayIsoDate} (ISO calendar date).
+
+${languageInstruction}
 
 Be willing to REASON about the data, not just look it up:
 - Calculate dates: e.g. "I got off X 6.5 months ago from April 23, 2026" → infer when they started (approximately early October 2025).

@@ -3,6 +3,7 @@ import {
   sanitizeCategoryForStorage,
   type KnownCategory,
 } from "@/lib/categories";
+import { normalizeUserLocale, type UiLocale } from "@/lib/i18n";
 import { getAuthenticatedSupabase } from "@/lib/supabase/server";
 import {
   possessiveExample,
@@ -136,6 +137,21 @@ Guardrails:
 - If there is genuinely no first-person author reference left to rewrite, leave wording unchanged aside from step 1 cleanup.`;
 }
 
+function koreanThirdPersonInstructionBlock(userName: string): string {
+  return `STEP 4 - Third person (Korean):
+
+If the user's language preference is Korean or the entry is primarily in Korean, follow Korean grammatical conventions. Korean often drops the subject when implied. Convert first-person to third-person by:
+- Replacing 나/저/내/제 (I/me/my) with the user's name (${userName}) when the subject would otherwise be unclear or when the entry mentions the user as part of an action
+- Don't force unnecessary subject pronouns — Korean reads more naturally without them
+- Maintain the user's verb endings and politeness level
+- Examples: '나는 댄비랑 하이킹했어' → '${userName}은 댄비랑 하이킹했어' or just '댄비와 하이킹함'
+- '내 생일은 5월 19일이야' → '${userName}의 생일은 5월 19일'
+
+For entries clearly not in Korean, apply the English third-person rules from the standard block mentally, but OUTPUT text in the entry's language.
+
+USER NAME FOR REFERENCE: ${userName}`;
+}
+
 const TAG_EXTRACTION_BLOCK = `TAGS — Generate 1–5 relevant tags for EACH entry (after STEP 4 third-person text is final).
 
 Tags should be:
@@ -149,11 +165,32 @@ The "tags" field MUST be a JSON array of strings on every entry object — never
 Example shape:
 {"entries":[{"text":"...","category":"relationships","tags":["Dan Bi","mom","hiking"]}]}`;
 
+const TAG_EXTRACTION_BLOCK_KO = `TAGS — Generate 1–5 relevant tags for EACH entry (after STEP 4 third-person text is final).
+
+Tags must be in the same language as the entry text after processing: use Korean tags for Korean entries and English tags for English entries.
+- People and topics: use natural Korean wording (e.g. 댄비, 엄마, 하이킹) when the entry is Korean.
+- Use concise noun phrases; match the user's wording when they use a relationship word.
+- The "tags" field MUST be a JSON array of strings on every entry object — never omit it, never use a single string instead of an array.
+
+Example (Korean entry):
+{"entries":[{"text":"...","category":"relationships","tags":["댄비","하이킹"]}]}`;
+
 function buildAutoSystemPrompt(
   userName: string,
   pronounsLine: string,
   examplePossessive: string,
+  uiLocale: UiLocale,
 ): string {
+  const thirdBlock =
+    uiLocale === "ko"
+      ? koreanThirdPersonInstructionBlock(userName)
+      : thirdPersonInstructionBlock(userName, pronounsLine, examplePossessive);
+  const tagBlock = uiLocale === "ko" ? TAG_EXTRACTION_BLOCK_KO : TAG_EXTRACTION_BLOCK;
+  const ackLang =
+    uiLocale === "ko"
+      ? "Write the acknowledgment in natural Korean (calm, under 8 words) when the content is Korean; English is fine for clearly English-only input."
+      : "Write the acknowledgment in English.";
+
   return `You are processing journal entries for a personal memory app. Process the input through these steps:
 
 STEP 1 - Clean the text:
@@ -184,11 +221,12 @@ STEP 3 - Categorize each entry. Use exactly ONE of these 7 categories (lowercase
 - emotional: feelings, mood, anxiety, joy in the moment; pattern-noticing and self-reflection about feelings also go here (formerly "reflection")
 - other: ONLY when truly nothing fits
 
-STEP 3b - ${TAG_EXTRACTION_BLOCK}
+STEP 3b - ${tagBlock}
 
-${thirdPersonInstructionBlock(userName, pronounsLine, examplePossessive)}
+${thirdBlock}
 
-After processing the entry, also generate a brief, natural acknowledgment message that confirms what you're saving. Keep it under 8 words. Examples:
+After processing the entry, also generate a brief, natural acknowledgment message that confirms what you're saving. Keep it under 8 words. ${ackLang}
+Examples:
 - 'Saving Dan Bi's birthday'
 - 'Logging your appointment'
 - 'Got it, splitting into 2 entries'
@@ -205,7 +243,14 @@ function buildManualSystemPrompt(
   pronounsLine: string,
   examplePossessive: string,
   fixedCategory: KnownCategory,
+  uiLocale: UiLocale,
 ): string {
+  const thirdBlock =
+    uiLocale === "ko"
+      ? koreanThirdPersonInstructionBlock(userName)
+      : thirdPersonInstructionBlock(userName, pronounsLine, examplePossessive);
+  const tagBlock = uiLocale === "ko" ? TAG_EXTRACTION_BLOCK_KO : TAG_EXTRACTION_BLOCK;
+
   return `You are processing a single journal entry for a personal memory app.
 
 The user chose category "${fixedCategory}" for this entry. Output exactly ONE entry with that category (do not split into multiple entries).
@@ -216,9 +261,9 @@ STEP 1 - Clean the text:
 - Fix broken grammar
 - Preserve the user's voice and meaning
 
-STEP 2 - ${TAG_EXTRACTION_BLOCK}
+STEP 2 - ${tagBlock}
 
-${thirdPersonInstructionBlock(userName, pronounsLine, examplePossessive)}
+${thirdBlock}
 
 After processing, generate a brief acknowledgment under 8 words.
 
@@ -342,6 +387,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const uiLocale = normalizeUserLocale(auth.user.user_metadata?.ui_locale);
+
   const userName = processingDisplayName(auth.user);
   const pronounsLine = pronounsLabelFromUser(auth.user);
   const examplePossessive = possessiveExample(userName);
@@ -374,6 +421,7 @@ export async function POST(request: Request) {
         pronounsLine,
         examplePossessive,
         category,
+        uiLocale,
       );
       const { ok, modelText } = await callAnthropicProcess(apiKey, system, originalText);
       if (!ok) {
@@ -410,7 +458,7 @@ export async function POST(request: Request) {
       return NextResponse.json(fallbackEntries(originalText));
     }
 
-    const system = buildAutoSystemPrompt(userName, pronounsLine, examplePossessive);
+    const system = buildAutoSystemPrompt(userName, pronounsLine, examplePossessive, uiLocale);
     debugProcess("Auto mode, input length:", originalText.length);
     const { ok, modelText } = await callAnthropicProcess(apiKey, system, originalText);
     if (!ok) {

@@ -1,7 +1,9 @@
 "use client";
 
+import { useI18n } from "@/components/I18nProvider";
 import { supabase } from "@/lib/supabase";
 import { isMissingTagsColumnError, normalizeTagList } from "@/lib/categories";
+import { intlLocaleForUi, type UiLocale } from "@/lib/i18n";
 import {
   formatBackupCalendarLabel,
   LAST_BACKUP_STORAGE_KEY,
@@ -17,20 +19,9 @@ import {
 } from "@/lib/user-profile";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 const BACKUP_APP_VERSION = "1.1";
-
-const CATEGORY_OPTIONS: { value: DefaultCategoryPreference; label: string }[] = [
-  { value: "auto", label: "Auto" },
-  { value: "health", label: "Health" },
-  { value: "relationships", label: "Relationships" },
-  { value: "career", label: "Career" },
-  { value: "logistics", label: "Logistics" },
-  { value: "finance", label: "Finance" },
-  { value: "emotional", label: "Emotional" },
-  { value: "other", label: "Other" },
-];
 
 const inputClass =
   "mt-1 w-full min-h-11 rounded-xl border border-zinc-300 bg-zinc-50 px-3 py-2 text-base outline-none transition focus:border-zinc-400 focus:ring-2 focus:ring-zinc-300 dark:border-zinc-700 dark:bg-zinc-950 dark:focus:border-zinc-500 dark:focus:ring-zinc-700";
@@ -39,6 +30,23 @@ const sectionClass =
   "space-y-4 rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900";
 
 export default function SettingsPage() {
+  const { t, locale, setUiLocale } = useI18n();
+  const intlLoc = intlLocaleForUi(locale);
+
+  const categoryPreferenceOptions = useMemo(
+    (): { value: DefaultCategoryPreference; label: string }[] => [
+      { value: "auto", label: t("common.auto") },
+      { value: "health", label: t("category.health") },
+      { value: "relationships", label: t("category.relationships") },
+      { value: "career", label: t("category.career") },
+      { value: "logistics", label: t("category.logistics") },
+      { value: "finance", label: t("category.finance") },
+      { value: "emotional", label: t("category.emotional") },
+      { value: "other", label: t("category.other") },
+    ],
+    [t],
+  );
+
   const router = useRouter();
   const [ready, setReady] = useState(false);
   const [email, setEmail] = useState("");
@@ -97,7 +105,7 @@ export default function SettingsPage() {
     try {
       const { data, error } = await supabase.from("entries").select("*");
       if (error) {
-        setTagsCatalogError("Could not load tags.");
+        setTagsCatalogError(t("common.settingsCouldNotLoadTags"));
         setTagsCatalog([]);
         return;
       }
@@ -107,11 +115,11 @@ export default function SettingsPage() {
         if (!Array.isArray(raw)) {
           continue;
         }
-        for (const t of raw) {
-          if (typeof t !== "string") {
+        for (const tagStr of raw) {
+          if (typeof tagStr !== "string") {
             continue;
           }
-          const k = t.trim();
+          const k = tagStr.trim();
           if (!k) {
             continue;
           }
@@ -125,7 +133,7 @@ export default function SettingsPage() {
     } finally {
       setTagsCatalogBusy(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     let cancelled = false;
@@ -177,7 +185,7 @@ export default function SettingsPage() {
       const o = pronounsObject.trim();
       const p = pronounsPossessive.trim();
       if (!s || !o || !p) {
-        setProfileError("Enter subject, object, and possessive pronouns for Custom.");
+        setProfileError(t("common.authCustomPronounsRequired"));
         return;
       }
     }
@@ -199,7 +207,7 @@ export default function SettingsPage() {
         setProfileError(error.message);
         return;
       }
-      setProfileNotice("Saved.");
+      setProfileNotice(t("settings.profileSaved"));
       setTimeout(() => setProfileNotice(null), 3000);
     } finally {
       setProfileBusy(false);
@@ -211,15 +219,15 @@ export default function SettingsPage() {
     setPasswordError(null);
     setPasswordNotice(null);
     if (newPassword !== confirmNewPassword) {
-      setPasswordError("New passwords don't match.");
+      setPasswordError(t("common.settingsPasswordMismatch"));
       return;
     }
     if (newPassword.length < 6) {
-      setPasswordError("New password must be at least 6 characters.");
+      setPasswordError(t("common.settingsPasswordTooShort"));
       return;
     }
     if (!email) {
-      setPasswordError("No email on session.");
+      setPasswordError(t("common.settingsNoEmail"));
       return;
     }
     setPasswordBusy(true);
@@ -229,7 +237,7 @@ export default function SettingsPage() {
         password: currentPassword,
       });
       if (signErr) {
-        setPasswordError("Current password is incorrect.");
+        setPasswordError(t("common.settingsWrongPassword"));
         return;
       }
       const { error: upErr } = await supabase.auth.updateUser({ password: newPassword });
@@ -237,7 +245,7 @@ export default function SettingsPage() {
         setPasswordError(upErr.message);
         return;
       }
-      setPasswordNotice("Password updated.");
+      setPasswordNotice(t("common.settingsPasswordUpdated"));
       setCurrentPassword("");
       setNewPassword("");
       setConfirmNewPassword("");
@@ -258,7 +266,7 @@ export default function SettingsPage() {
         .order("created_at", { ascending: true });
 
       if (error) {
-        setBackupError("Could not download backup. Please try again.");
+        setBackupError(t("common.settingsBackupFailed"));
         setBackupDownloading(false);
         return;
       }
@@ -309,10 +317,10 @@ export default function SettingsPage() {
         // quota
       }
       refreshLocalBackupLabel();
-      setBackupNotice("Backup downloaded.");
+      setBackupNotice(t("common.settingsBackupDownloaded"));
       setTimeout(() => setBackupNotice(null), 4000);
     } catch {
-      setBackupError("Could not download backup. Please try again.");
+      setBackupError(t("common.settingsBackupFailed"));
     } finally {
       setBackupDownloading(false);
     }
@@ -324,7 +332,7 @@ export default function SettingsPage() {
       data: { user },
     } = await supabase.auth.getUser();
     if (!user) {
-      setDeleteAllError("Not signed in.");
+      setDeleteAllError(t("common.settingsNotSignedIn"));
       return;
     }
     setDeleteAllBusy(true);
@@ -337,7 +345,7 @@ export default function SettingsPage() {
       setEntryCount(0);
       setDeleteAllOpen(false);
       setDeleteAllConfirmText("");
-      setBackupNotice("All entries deleted.");
+      setBackupNotice(t("common.settingsDeleteAllDone"));
       setTimeout(() => setBackupNotice(null), 4000);
       router.push("/");
       router.refresh();
@@ -353,7 +361,7 @@ export default function SettingsPage() {
     try {
       writeDefaultCategoryPreference(defaultCategory);
       writeStatsExpandedPreference(statsExpandedDefault);
-      setPrefsNotice("Preferences saved.");
+      setPrefsNotice(t("settings.prefsSaved"));
       setTimeout(() => setPrefsNotice(null), 3000);
     } finally {
       setPrefsBusy(false);
@@ -370,13 +378,13 @@ export default function SettingsPage() {
     try {
       const { data: rows, error } = await supabase.from("entries").select("*");
       if (error || !rows) {
-        setTagsCatalogError("Could not update entries.");
+        setTagsCatalogError(t("common.settingsCouldNotUpdateEntries"));
         return;
       }
       for (const row of rows) {
         const rawTags = (row as { id: number; tags?: unknown }).tags;
         const tags = Array.isArray(rawTags)
-          ? rawTags.filter((t: unknown): t is string => typeof t === "string")
+          ? rawTags.filter((item: unknown): item is string => typeof item === "string")
           : [];
         if (!tags.some((t) => t === fromTag)) {
           continue;
@@ -390,13 +398,11 @@ export default function SettingsPage() {
             .eq("id", id)
         ).error;
         if (upErr && isMissingTagsColumnError(upErr)) {
-          setTagsCatalogError(
-            "Tags column is not available on the server. Add the tags column in Supabase to rename tags.",
-          );
+          setTagsCatalogError(t("common.settingsTagsColumnMissingRename"));
           return;
         }
         if (upErr) {
-          setTagsCatalogError("Could not rename tag.");
+          setTagsCatalogError(t("common.settingsRenameTagFailed"));
           return;
         }
       }
@@ -407,7 +413,7 @@ export default function SettingsPage() {
   }
 
   async function handleDeleteTagEverywhere(tag: string) {
-    const confirmed = window.confirm(`Remove tag "${tag}" from all entries?`);
+    const confirmed = window.confirm(t("common.settingsRemoveTagPrompt", { tag }));
     if (!confirmed) {
       return;
     }
@@ -416,13 +422,13 @@ export default function SettingsPage() {
     try {
       const { data: rows, error } = await supabase.from("entries").select("*");
       if (error || !rows) {
-        setTagsCatalogError("Could not update entries.");
+        setTagsCatalogError(t("common.settingsCouldNotUpdateEntries"));
         return;
       }
       for (const row of rows) {
         const rawTags = (row as { id: number; tags?: unknown }).tags;
         const tags = Array.isArray(rawTags)
-          ? rawTags.filter((t: unknown): t is string => typeof t === "string")
+          ? rawTags.filter((item: unknown): item is string => typeof item === "string")
           : [];
         if (!tags.includes(tag)) {
           continue;
@@ -436,13 +442,11 @@ export default function SettingsPage() {
             .eq("id", id)
         ).error;
         if (upErr && isMissingTagsColumnError(upErr)) {
-          setTagsCatalogError(
-            "Tags column is not available on the server. Add the tags column in Supabase to remove tags.",
-          );
+          setTagsCatalogError(t("common.settingsTagsColumnMissingRemove"));
           return;
         }
         if (upErr) {
-          setTagsCatalogError("Could not remove tag.");
+          setTagsCatalogError(t("common.settingsRemoveTagFailed"));
           return;
         }
       }
@@ -462,7 +466,7 @@ export default function SettingsPage() {
   if (!ready) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-zinc-100 dark:bg-zinc-950">
-        <p className="text-sm text-zinc-600 dark:text-zinc-400">Loading…</p>
+        <p className="text-sm text-zinc-600 dark:text-zinc-400">{t("common.loading")}</p>
       </div>
     );
   }
@@ -477,30 +481,30 @@ export default function SettingsPage() {
             href="/"
             className="text-sm font-medium text-zinc-600 underline-offset-2 hover:text-zinc-900 hover:underline dark:text-zinc-400 dark:hover:text-zinc-100"
           >
-            ← Back to app
+            {t("common.settingsBack")}
           </Link>
         </div>
 
         <header className="space-y-1">
-          <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
-          <p className="text-sm text-zinc-600 dark:text-zinc-400">Account, data, and preferences.</p>
+          <h1 className="text-2xl font-semibold tracking-tight">{t("settings.title")}</h1>
+          <p className="text-sm text-zinc-600 dark:text-zinc-400">{t("common.settingsSubtitle")}</p>
         </header>
 
         <section className={sectionClass} aria-labelledby="account-heading">
           <h2 id="account-heading" className="text-base font-semibold">
-            Account
+            {t("common.settingsAccount")}
           </h2>
           <div>
             <p className="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
-              Email
+              {t("common.email")}
             </p>
             <p className="mt-1 text-sm text-zinc-800 dark:text-zinc-200">{email || "—"}</p>
-            <p className="mt-1 text-xs text-zinc-500">Your sign-in identifier (read-only).</p>
+            <p className="mt-1 text-xs text-zinc-500">{t("common.settingsEmailRo")}</p>
           </div>
 
           <form onSubmit={(e) => void handleSaveProfile(e)} className="space-y-4">
             <label className="block text-sm font-medium">
-              Display name
+              {t("common.settingsDisplayName")}
               <input
                 type="text"
                 value={displayName}
@@ -513,7 +517,7 @@ export default function SettingsPage() {
 
             <div className="space-y-2">
               <label className="block text-sm font-medium" htmlFor="pronouns-preset">
-                Pronouns
+                {t("common.settingsPronouns")}
               </label>
               <select
                 id="pronouns-preset"
@@ -527,15 +531,14 @@ export default function SettingsPage() {
                 <option value="custom">Custom</option>
               </select>
               <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                Used when saving entries in third person. Pronoun changes apply to new entries only;
-                existing entries are preserved as-is.
+                {t("common.settingsPronounsHelp")}
               </p>
             </div>
 
             {pronounsPreset === "custom" ? (
               <div className="grid gap-3 sm:grid-cols-3">
                 <label className="block text-sm font-medium">
-                  Subject
+                  {t("common.settingsSubject")}
                   <input
                     type="text"
                     value={pronounsSubject}
@@ -546,7 +549,7 @@ export default function SettingsPage() {
                   />
                 </label>
                 <label className="block text-sm font-medium">
-                  Object
+                  {t("common.settingsObject")}
                   <input
                     type="text"
                     value={pronounsObject}
@@ -557,7 +560,7 @@ export default function SettingsPage() {
                   />
                 </label>
                 <label className="block text-sm font-medium">
-                  Possessive
+                  {t("common.settingsPossessive")}
                   <input
                     type="text"
                     value={pronounsPossessive}
@@ -581,14 +584,14 @@ export default function SettingsPage() {
               disabled={profileBusy}
               className="rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
             >
-              {profileBusy ? "Saving…" : "Save profile"}
+              {profileBusy ? t("common.settingsSaveProfileBusy") : t("common.authSaveProfile")}
             </button>
           </form>
 
           <form onSubmit={(e) => void handleChangePassword(e)} className="space-y-2 border-t border-zinc-200 pt-4 dark:border-zinc-800">
-            <p className="text-sm font-medium">Change password</p>
+            <p className="text-sm font-medium">{t("settings.updatePassword")}</p>
             <label className="block text-sm font-medium">
-              Current password
+              {t("common.authCurrentPassword")}
               <input
                 type="password"
                 value={currentPassword}
@@ -598,7 +601,7 @@ export default function SettingsPage() {
               />
             </label>
             <label className="block text-sm font-medium">
-              New password
+              {t("common.authNewPassword")}
               <input
                 type="password"
                 value={newPassword}
@@ -608,7 +611,7 @@ export default function SettingsPage() {
               />
             </label>
             <label className="block text-sm font-medium">
-              Confirm new password
+              {t("common.authConfirmNewPassword")}
               <input
                 type="password"
                 value={confirmNewPassword}
@@ -628,7 +631,7 @@ export default function SettingsPage() {
               disabled={passwordBusy}
               className="rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
             >
-              {passwordBusy ? "Updating…" : "Update password"}
+              {passwordBusy ? t("settings.updatingPassword") : t("settings.updatePassword")}
             </button>
           </form>
 
@@ -639,23 +642,23 @@ export default function SettingsPage() {
               disabled={signOutBusy}
               className="rounded-xl border border-zinc-300 bg-white px-4 py-2 text-sm font-medium dark:border-zinc-600 dark:bg-zinc-950"
             >
-              {signOutBusy ? "Signing out…" : "Sign out"}
+              {signOutBusy ? t("settings.signingOut") : t("settings.signOut")}
             </button>
           </div>
         </section>
 
         <section className={sectionClass} aria-labelledby="data-heading">
           <h2 id="data-heading" className="text-base font-semibold">
-            Data management
+            {t("settings.dataManagement")}
           </h2>
           <p className="text-sm text-zinc-600 dark:text-zinc-400">
-            Total entries:{" "}
+            {t("settings.totalEntriesLabel")}{" "}
             <span className="font-medium text-zinc-900 dark:text-zinc-100">{entryCount ?? "—"}</span>
           </p>
           <p className="text-sm text-zinc-600 dark:text-zinc-400">
-            Last backup:{" "}
+            {t("settings.lastBackup")}{" "}
             <span className="font-medium text-zinc-900 dark:text-zinc-100">
-              {lastBackupIso ? formatBackupCalendarLabel(lastBackupIso) : "Never"}
+              {lastBackupIso ? formatBackupCalendarLabel(lastBackupIso, intlLoc) : t("settings.never")}
             </span>
           </p>
           {backupNotice ? (
@@ -670,7 +673,7 @@ export default function SettingsPage() {
             disabled={backupDownloading}
             className="w-full rounded-xl bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
           >
-            {backupDownloading ? "Preparing…" : "Download full backup"}
+            {backupDownloading ? t("settings.preparingBackup") : t("settings.downloadBackup")}
           </button>
 
           <div className="border-t border-zinc-200 pt-4 dark:border-zinc-800">
@@ -683,18 +686,38 @@ export default function SettingsPage() {
               }}
               className="w-full rounded-xl border border-red-300 bg-red-50 px-4 py-2.5 text-sm font-medium text-red-900 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200"
             >
-              Delete all entries
+              {t("settings.deleteAllEntries")}
             </button>
           </div>
         </section>
 
         <section className={sectionClass} aria-labelledby="prefs-heading">
           <h2 id="prefs-heading" className="text-base font-semibold">
-            Preferences
+            {t("settings.preferences")}
           </h2>
           <form onSubmit={handleSavePreferences} className="space-y-4">
+            <div className="space-y-1">
+              <label className="block text-sm font-medium" htmlFor="ui-locale">
+                {t("settings.language")}
+              </label>
+              <select
+                id="ui-locale"
+                value={locale}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (v === "en" || v === "ko") {
+                    void setUiLocale(v as UiLocale);
+                  }
+                }}
+                className={inputClass}
+              >
+                <option value="en">{t("settings.english")}</option>
+                <option value="ko">{t("settings.korean")}</option>
+              </select>
+              <p className="text-xs text-zinc-500 dark:text-zinc-400">{t("settings.languageHelp")}</p>
+            </div>
             <label className="block text-sm font-medium">
-              Default category for new entries
+              {t("settings.defaultCategory")}
               <select
                 value={defaultCategory}
                 onChange={(e) =>
@@ -702,7 +725,7 @@ export default function SettingsPage() {
                 }
                 className={inputClass}
               >
-                {CATEGORY_OPTIONS.map((opt) => (
+                {categoryPreferenceOptions.map((opt) => (
                   <option key={opt.value} value={opt.value}>
                     {opt.label}
                   </option>
@@ -716,7 +739,7 @@ export default function SettingsPage() {
                 onChange={(e) => setStatsExpandedDefault(e.target.checked)}
                 className="h-4 w-4 rounded border-zinc-300"
               />
-              <span>Show stats section by default on the Entries tab</span>
+              <span>{t("settings.statsExpanded")}</span>
             </label>
             {prefsNotice ? (
               <p className="text-sm text-emerald-800 dark:text-emerald-200">{prefsNotice}</p>
@@ -726,31 +749,29 @@ export default function SettingsPage() {
               disabled={prefsBusy}
               className="rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
             >
-              {prefsBusy ? "Saving…" : "Save preferences"}
+              {prefsBusy ? t("settings.savingPrefs") : t("settings.savePreferences")}
             </button>
           </form>
         </section>
 
         <section className={sectionClass} aria-labelledby="tags-heading">
           <h2 id="tags-heading" className="text-base font-semibold">
-            Tags
+            {t("settings.tagsSection")}
           </h2>
           <p className="text-sm font-medium text-zinc-800 dark:text-zinc-200">
-            Total tags:{" "}
+            {t("settings.totalTags")}{" "}
             <span className="tabular-nums text-zinc-600 dark:text-zinc-400">
               {tagsCatalogBusy ? "…" : tagsCatalog.length}
             </span>
           </p>
-          <p className="text-sm text-zinc-600 dark:text-zinc-400">
-            Rename or delete tags across all entries. Changes apply immediately.
-          </p>
+          <p className="text-sm text-zinc-600 dark:text-zinc-400">{t("settings.tagsHelp")}</p>
           {tagsCatalogError ? (
             <p className="text-sm text-red-700 dark:text-red-300">{tagsCatalogError}</p>
           ) : null}
           {tagsCatalogBusy ? (
-            <p className="text-sm text-zinc-500">Loading tags…</p>
+            <p className="text-sm text-zinc-500">{t("settings.loadingTags")}</p>
           ) : tagsCatalog.length === 0 ? (
-            <p className="text-sm text-zinc-500">No tags yet.</p>
+            <p className="text-sm text-zinc-500">{t("settings.noTagsYet")}</p>
           ) : (
             <ul className="divide-y divide-zinc-200 rounded-xl border border-zinc-200 dark:divide-zinc-700 dark:border-zinc-700">
               {tagsCatalog.map((row) => (
@@ -765,7 +786,7 @@ export default function SettingsPage() {
                         value={renameDraft}
                         onChange={(e) => setRenameDraft(e.target.value)}
                         className={`${inputClass} max-w-xs shrink py-1.5 text-sm`}
-                        aria-label="New tag name"
+                        aria-label={t("common.settingsNewTagNameAria")}
                       />
                       <button
                         type="button"
@@ -778,7 +799,7 @@ export default function SettingsPage() {
                         }
                         className="rounded-lg bg-zinc-900 px-2 py-1 text-xs font-medium text-white dark:bg-zinc-100 dark:text-zinc-900"
                       >
-                        Apply
+                        {t("common.apply")}
                       </button>
                       <button
                         type="button"
@@ -786,7 +807,7 @@ export default function SettingsPage() {
                         onClick={() => setRenameTargetTag(null)}
                         className="rounded-lg border border-zinc-300 px-2 py-1 text-xs dark:border-zinc-600"
                       >
-                        Cancel
+                        {t("common.cancel")}
                       </button>
                     </div>
                   ) : (
@@ -807,7 +828,7 @@ export default function SettingsPage() {
                           }}
                           className="rounded-lg border border-zinc-300 px-2 py-1 text-xs dark:border-zinc-600"
                         >
-                          Rename
+                          {t("common.rename")}
                         </button>
                         <button
                           type="button"
@@ -815,7 +836,7 @@ export default function SettingsPage() {
                           onClick={() => void handleDeleteTagEverywhere(row.tag)}
                           className="rounded-lg border border-red-200 px-2 py-1 text-xs text-red-800 dark:border-red-900 dark:text-red-200"
                         >
-                          {tagRenameBusy === row.tag ? "…" : "Delete"}
+                          {tagRenameBusy === row.tag ? "…" : t("common.delete")}
                         </button>
                       </div>
                     </>
@@ -830,7 +851,7 @@ export default function SettingsPage() {
             disabled={tagsCatalogBusy}
             className="mt-2 text-sm font-medium text-zinc-700 underline-offset-2 hover:underline dark:text-zinc-300"
           >
-            Refresh list
+            {t("settings.refreshList")}
           </button>
         </section>
       </main>
@@ -852,18 +873,17 @@ export default function SettingsPage() {
             onClick={(e) => e.stopPropagation()}
           >
             <h3 id="delete-all-title" className="text-lg font-semibold text-red-900 dark:text-red-200">
-              Delete all entries?
+              {t("settings.deleteAllTitle")}
             </h3>
             <p className="mt-2 text-sm text-zinc-700 dark:text-zinc-300">
-              This will permanently delete all {n} entries. This cannot be undone. Type{" "}
-              <span className="font-mono font-semibold">DELETE</span> to confirm.
+              {t("settings.deleteAllBody", { count: n })}
             </p>
             <input
               type="text"
               value={deleteAllConfirmText}
               onChange={(e) => setDeleteAllConfirmText(e.target.value)}
               className={`${inputClass} mt-3 font-mono`}
-              placeholder="DELETE"
+              placeholder={t("settings.placeholderDelete")}
               autoComplete="off"
               disabled={deleteAllBusy}
             />
@@ -877,7 +897,7 @@ export default function SettingsPage() {
                 onClick={() => void handleDeleteAllEntries()}
                 className="rounded-xl bg-red-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
               >
-                {deleteAllBusy ? "Deleting…" : "Confirm delete all"}
+                {deleteAllBusy ? t("settings.deleting") : t("settings.confirmDeleteAll")}
               </button>
               <button
                 type="button"
@@ -885,7 +905,7 @@ export default function SettingsPage() {
                 onClick={() => setDeleteAllOpen(false)}
                 className="rounded-xl border border-zinc-300 px-4 py-2 text-sm dark:border-zinc-600"
               >
-                Cancel
+                {t("common.cancel")}
               </button>
             </div>
           </div>

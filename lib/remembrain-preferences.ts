@@ -56,8 +56,8 @@ export function writeStatsExpandedPreference(expanded: boolean): void {
   }
 }
 
-export function formatBackupCalendarLabel(iso: string): string {
-  return new Intl.DateTimeFormat("en-US", {
+export function formatBackupCalendarLabel(iso: string, intlLocale = "en-US"): string {
+  return new Intl.DateTimeFormat(intlLocale, {
     month: "long",
     day: "numeric",
     year: "numeric",

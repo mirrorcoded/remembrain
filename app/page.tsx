@@ -12,8 +12,8 @@ import {
 } from "react";
 import Link from "next/link";
 
+import { useI18n } from "@/components/I18nProvider";
 import {
-  CATEGORY_LABELS,
   KNOWN_CATEGORIES,
   categoryBadgeClass,
   categoryBarFillClass,
@@ -26,6 +26,11 @@ import {
   sanitizeCategoryForStorage,
   type KnownCategory,
 } from "@/lib/categories";
+import {
+  categoryLabelForLocale,
+  intlLocaleForUi,
+  speechRecognitionLang,
+} from "@/lib/i18n";
 import {
   readDefaultCategoryPreference,
   readStatsExpandedPreference,
@@ -79,31 +84,23 @@ type ChatThreadRow = {
   created_at: string;
 };
 
-function formatTimestamp(timestamp: string): string {
-  const datePart = new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
+function formatTimestamp(timestamp: string, intlLoc: string): string {
+  return new Intl.DateTimeFormat(intlLoc, {
+    dateStyle: "medium",
+    timeStyle: "short",
   }).format(new Date(timestamp));
-
-  const timePart = new Intl.DateTimeFormat("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(new Date(timestamp));
-
-  return `${datePart} at ${timePart}`;
 }
 
-function formatDateHeading(timestamp: string): string {
-  return new Intl.DateTimeFormat("en-US", {
+function formatDateHeading(timestamp: string, intlLoc: string): string {
+  return new Intl.DateTimeFormat(intlLoc, {
     month: "long",
     day: "numeric",
     year: "numeric",
   }).format(new Date(timestamp));
 }
 
-function formatTimeOnly(timestamp: string): string {
-  return new Intl.DateTimeFormat("en-US", {
+function formatTimeOnly(timestamp: string, intlLoc: string): string {
+  return new Intl.DateTimeFormat(intlLoc, {
     hour: "numeric",
     minute: "2-digit",
   }).format(new Date(timestamp));
@@ -134,7 +131,13 @@ function startOfLocalDay(d: Date): Date {
 }
 
 /** Labels for Saved Entries date separators (local calendar). */
-function formatEntryDateGroupLabel(iso: string, referenceNow: Date): string {
+function formatEntryDateGroupLabel(
+  iso: string,
+  referenceNow: Date,
+  intlLoc: string,
+  todayLabel: string,
+  yesterdayLabel: string,
+): string {
   const entryDate = new Date(iso);
   const startEntry = startOfLocalDay(entryDate);
   const startToday = startOfLocalDay(referenceNow);
@@ -143,15 +146,15 @@ function formatEntryDateGroupLabel(iso: string, referenceNow: Date): string {
   );
 
   if (diffDays === 0) {
-    return "Today";
+    return todayLabel;
   }
   if (diffDays === 1) {
-    return "Yesterday";
+    return yesterdayLabel;
   }
   if (diffDays >= 2 && diffDays <= 6) {
-    return new Intl.DateTimeFormat("en-US", { weekday: "long" }).format(entryDate);
+    return new Intl.DateTimeFormat(intlLoc, { weekday: "long" }).format(entryDate);
   }
-  return new Intl.DateTimeFormat("en-US", {
+  return new Intl.DateTimeFormat(intlLoc, {
     month: "long",
     day: "numeric",
     year: "numeric",
@@ -167,11 +170,20 @@ type EntryDateGroup = {
 function groupFilteredEntriesByLocalDate(
   entries: Entry[],
   referenceNow: Date,
+  intlLoc: string,
+  todayLabel: string,
+  yesterdayLabel: string,
 ): EntryDateGroup[] {
   const groups: EntryDateGroup[] = [];
   for (const entry of entries) {
     const dateKey = formatLocalYmd(startOfLocalDay(new Date(entry.created_at)));
-    const label = formatEntryDateGroupLabel(entry.created_at, referenceNow);
+    const label = formatEntryDateGroupLabel(
+      entry.created_at,
+      referenceNow,
+      intlLoc,
+      todayLabel,
+      yesterdayLabel,
+    );
     const last = groups[groups.length - 1];
     if (last && last.dateKey === dateKey) {
       last.entries.push(entry);
@@ -200,8 +212,8 @@ function isEntryLongPressIgnoredTarget(target: EventTarget | null): boolean {
   );
 }
 
-function formatShortThreadDate(iso: string): string {
-  return new Intl.DateTimeFormat("en-US", {
+function formatShortThreadDate(iso: string, intlLoc: string): string {
+  return new Intl.DateTimeFormat(intlLoc, {
     month: "short",
     day: "numeric",
     year: "numeric",
@@ -232,6 +244,20 @@ function RefreshGlyph({ className }: { className?: string }) {
 }
 
 export default function Home() {
+  const { t, locale } = useI18n();
+  const intlLoc = intlLocaleForUi(locale);
+
+  const entryCategoryUiLabel = useCallback(
+    (category: string) => {
+      const c = category.trim().toLowerCase();
+      if (isKnownCategory(c)) {
+        return categoryLabelForLocale(c, locale);
+      }
+      return categoryDisplayLabel(category);
+    },
+    [locale],
+  );
+
   const [text, setText] = useState("");
   const [newEntryCategorySelection, setNewEntryCategorySelection] =
     useState<NewEntryCategorySelection>("auto");
@@ -370,14 +396,14 @@ export default function Home() {
     const rows: { key: string; label: string; count: number; barClass: string }[] =
       ALL_CATEGORIES.map((category) => ({
         key: category,
-        label: CATEGORY_LABELS[category],
+        label: categoryLabelForLocale(category, locale),
         count: counts[category],
         barClass: categoryBarFillClass(category),
       }));
     if (legacyCount > 0) {
       rows.push({
         key: "legacy",
-        label: "Older categories",
+        label: t("common.olderCategories"),
         count: legacyCount,
         barClass: categoryBarFillClass("other"),
       });
@@ -388,7 +414,7 @@ export default function Home() {
       }
       return a.label.localeCompare(b.label);
     });
-  }, [entries]);
+  }, [entries, locale, t]);
 
   const tagFrequencyList = useMemo(() => {
     const map = new Map<string, number>();
@@ -479,16 +505,23 @@ export default function Home() {
   }, [entries, searchQuery, activeCategory, activeTagFilters]);
 
   const groupedFilteredEntries = useMemo(
-    () => groupFilteredEntriesByLocalDate(filteredEntries, new Date(clockTickMs)),
-    [filteredEntries, clockTickMs],
+    () =>
+      groupFilteredEntriesByLocalDate(
+        filteredEntries,
+        new Date(clockTickMs),
+        intlLoc,
+        t("common.today"),
+        t("common.yesterday"),
+      ),
+    [filteredEntries, clockTickMs, intlLoc, t],
   );
 
   const greetingLine = useMemo(() => {
     if (!session?.user) {
-      return "Welcome";
+      return t("common.welcome");
     }
     return greetingLineForUser(session.user);
-  }, [session]);
+  }, [session, t]);
 
   const entriesSuggestionKey = useMemo(
     () => `${entries.length}:${entries[0]?.id ?? "none"}`,
@@ -498,9 +531,9 @@ export default function Home() {
   const toggleTagFilter = useCallback((tag: string) => {
     setActiveTagFilters((prev) => {
       const lower = tag.toLowerCase();
-      const has = prev.some((t) => t.toLowerCase() === lower);
+      const has = prev.some((x) => x.toLowerCase() === lower);
       if (has) {
-        return prev.filter((t) => t.toLowerCase() !== lower);
+        return prev.filter((x) => x.toLowerCase() !== lower);
       }
       return [...prev, tag];
     });
@@ -510,6 +543,22 @@ export default function Home() {
     searchQuery.trim().length > 0 ||
     activeCategory !== "all" ||
     activeTagFilters.length > 0;
+
+  function mapChatApiError(message: string): string {
+    const map: Record<string, string> = {
+      Unauthorized: "common.chatUnauthorized",
+      "Thread not found.": "common.chatThreadNotFound",
+      "Could not save message.": "common.chatSaveMessageFailed",
+      "Assistant request failed.": "common.chatAssistantFailed",
+      "Could not load history.": "common.chatCouldNotLoadHistory",
+      "Could not save reply.": "common.chatCouldNotSaveReply",
+      "Server configuration error.": "common.chatServerConfig",
+      "Something went wrong.": "common.chatGenericError",
+      "Assistant response invalid.": "common.chatAssistantFailed",
+    };
+    const key = map[message];
+    return key ? t(key) : message;
+  }
 
   const loadEntries = useCallback(async (options?: { silent?: boolean }) => {
     const silent = options?.silent ?? false;
@@ -527,7 +576,7 @@ export default function Home() {
 
     if (error) {
       console.error("[entries] load failed:", error.message, error);
-      setErrorMessage("Could not load entries. Please try again.");
+      setErrorMessage(t("common.couldNotLoadEntries"));
       if (silent) {
         setEntriesRefreshing(false);
       } else {
@@ -553,7 +602,7 @@ export default function Home() {
     } else {
       setIsLoading(false);
     }
-  }, []);
+  }, [t]);
 
   const loadChatThreads = useCallback(async (options?: { silent?: boolean }) => {
     const silent = options?.silent ?? false;
@@ -997,7 +1046,7 @@ export default function Home() {
     setChatError(null);
     const { data, error } = await supabase.from("chat_threads").insert({}).select("id, title, updated_at, created_at").single();
     if (error || !data) {
-      setChatError("Could not create chat.");
+      setChatError(t("common.couldNotCreateChat"));
       return;
     }
     setChatSidebarOpen(false);
@@ -1007,14 +1056,14 @@ export default function Home() {
   }
 
   async function handleDeleteChatThread(threadId: string) {
-    const confirmed = window.confirm("Delete this chat?");
+    const confirmed = window.confirm(t("common.deleteChatQ"));
     if (!confirmed) {
       return;
     }
     setChatError(null);
     const { error } = await supabase.from("chat_threads").delete().eq("id", threadId);
     if (error) {
-      setChatError("Could not delete chat.");
+      setChatError(t("common.couldNotDeleteChat"));
       return;
     }
     if (activeThreadId === threadId) {
@@ -1071,7 +1120,7 @@ export default function Home() {
       const payload = (await response.json()) as { response?: string; error?: string; thread_id?: string };
 
       if (response.status === 401) {
-        setChatError("Your session expired. Please sign in again.");
+        setChatError(t("common.sessionExpired"));
         revertOptimisticUserMessage(trimmed);
         setChatInput(trimmed);
         return;
@@ -1079,7 +1128,9 @@ export default function Home() {
 
       if (!response.ok) {
         setChatError(
-          typeof payload.error === "string" ? payload.error : "Something went wrong. Try again.",
+          typeof payload.error === "string"
+            ? mapChatApiError(payload.error)
+            : t("common.chatErrorFallback"),
         );
         revertOptimisticUserMessage(trimmed);
         setChatInput(trimmed);
@@ -1089,7 +1140,7 @@ export default function Home() {
       await loadChatThreads({ silent: true });
       await fetchThreadMessagesForId(activeThreadId, { silent: true });
     } catch {
-      setChatError("Network error. Try again.");
+      setChatError(t("common.networkError"));
       revertOptimisticUserMessage(trimmed);
       setChatInput(trimmed);
     } finally {
@@ -1561,16 +1612,14 @@ export default function Home() {
     if (ids.length === 0) {
       return;
     }
-    const confirmed = window.confirm(
-      `Delete ${ids.length} entries? This cannot be undone.`,
-    );
+    const confirmed = window.confirm(t("common.bulkDeleteIrreversible", { count: ids.length }));
     if (!confirmed) {
       return;
     }
     setErrorMessage(null);
     const { error } = await supabase.from("entries").delete().in("id", ids);
     if (error) {
-      setErrorMessage("Could not delete entries. Please try again.");
+      setErrorMessage(t("common.settingsCouldNotDeleteEntries"));
       await loadEntries();
       return;
     }
@@ -1589,7 +1638,9 @@ export default function Home() {
   }
 
   function clearPasswordMismatchIfNeeded() {
-    setAuthError((previous) => (previous === "Passwords don't match" ? null : previous));
+    setAuthError((previous) =>
+      previous === t("common.authPasswordsMismatch") ? null : previous,
+    );
   }
 
   async function handleAuthSubmit(event: FormEvent<HTMLFormElement>) {
@@ -1600,13 +1651,13 @@ export default function Home() {
     const email = authEmail.trim();
     const password = authPassword;
     if (!email || !password) {
-      setAuthError("Enter email and password.");
+      setAuthError(t("common.authEnterEmailPassword"));
       return;
     }
 
     if (authMode === "signUp") {
       if (password !== authConfirmPassword) {
-        setAuthError("Passwords don't match");
+        setAuthError(t("common.authPasswordsMismatch"));
         return;
       }
     }
@@ -1620,7 +1671,7 @@ export default function Home() {
           return;
         }
         if (data.user && !data.session) {
-          setAuthNotice("Check your email to confirm your account, then sign in.");
+          setAuthNotice(t("common.authConfirmEmail"));
         }
         setAuthConfirmPassword("");
         return;
@@ -1642,7 +1693,7 @@ export default function Home() {
 
     const email = authEmail.trim();
     if (!email) {
-      setAuthError("Enter your email address.");
+      setAuthError(t("common.authEnterEmail"));
       return;
     }
 
@@ -1654,9 +1705,7 @@ export default function Home() {
         setAuthError(error.message);
         return;
       }
-      setAuthNotice(
-        "If an account exists for that email, a password reset link has been sent. Check your inbox.",
-      );
+      setAuthNotice(t("common.authResetSent"));
     } finally {
       setAuthBusy(false);
     }
@@ -1682,7 +1731,7 @@ export default function Home() {
     finalTranscriptRef.current = "";
 
     const recognition = new speechRecognitionCtor();
-    recognition.lang = window.navigator.language;
+    recognition.lang = speechRecognitionLang(locale);
     recognition.interimResults = true;
     recognition.continuous = false;
 
@@ -1708,11 +1757,9 @@ export default function Home() {
 
     recognition.onerror = (event) => {
       if (event.error === "not-allowed" || event.error === "service-not-allowed") {
-        setSpeechErrorMessage(
-          "Microphone permission was denied. Please allow microphone access and try again.",
-        );
+        setSpeechErrorMessage(t("common.micDenied"));
       } else {
-        setSpeechErrorMessage("Voice input could not start. Please try again.");
+        setSpeechErrorMessage(t("common.voiceFailed"));
       }
       setIsListening(false);
     };
@@ -1758,7 +1805,7 @@ export default function Home() {
     setIsSaving(true);
     setErrorMessage(null);
     setSaveNoticeMessage("");
-    setSaveInlineStatus(useAutoCategory ? "Got it..." : "Saving...");
+    setSaveInlineStatus(useAutoCategory ? t("common.gotIt") : t("common.saving"));
     stopListening({ discardPendingCommit: true });
 
     let processedEntries: Array<{ text: string; category: KnownCategory; tags: string[] }> = [
@@ -1787,7 +1834,7 @@ export default function Home() {
       });
 
       if (processResponse.status === 401) {
-        setErrorMessage("Your session expired. Please sign in again.");
+        setErrorMessage(t("common.sessionExpired"));
         abortSave(true);
         return;
       }
@@ -1891,7 +1938,7 @@ export default function Home() {
       }
 
       if (error) {
-        setErrorMessage("Could not save entry. Please try again.");
+        setErrorMessage(t("common.couldNotSaveEntry"));
         abortSave(true);
         return;
       }
@@ -1927,7 +1974,7 @@ export default function Home() {
     if (!raw) {
       return;
     }
-    const exists = editingTags.some((t) => t.toLowerCase() === raw.toLowerCase());
+    const exists = editingTags.some((tag) => tag.toLowerCase() === raw.toLowerCase());
     if (exists) {
       setEditingTagInput("");
       return;
@@ -1963,7 +2010,7 @@ export default function Home() {
     }
 
     if (error) {
-      setErrorMessage("Could not update entry. Please try again.");
+      setErrorMessage(t("common.couldNotUpdateEntry"));
       setIsUpdatingEntry(false);
       return;
     }
@@ -1973,7 +2020,7 @@ export default function Home() {
   }
 
   async function handleDeleteEntry(entryId: number) {
-    const confirmed = window.confirm("Delete this entry?");
+    const confirmed = window.confirm(t("common.deleteEntryQ"));
     if (!confirmed) {
       return;
     }
@@ -1984,7 +2031,7 @@ export default function Home() {
     const { error } = await supabase.from("entries").delete().eq("id", entryId);
 
     if (error) {
-      setErrorMessage("Could not delete entry. Please try again.");
+      setErrorMessage(t("common.couldNotDeleteEntry"));
       setDeletingEntryId(null);
       return;
     }
@@ -2054,25 +2101,25 @@ export default function Home() {
 
   function buildMarkdownExport(entriesToExport: Entry[]): string {
     const lines: string[] = [
-      "# Remembrain Export",
-      `Generated: ${new Date().toLocaleString()}`,
-      `Total entries: ${entriesToExport.length}`,
+      `# ${t("common.exportHeadingDoc")}`,
+      `${t("common.generatedPrefix")} ${new Date().toLocaleString(intlLoc)}`,
+      `${t("common.entryExportMetaLine")} ${entriesToExport.length}`,
       "",
     ];
 
     let currentDateHeading = "";
     entriesToExport.forEach((entry) => {
-      const dateHeading = formatDateHeading(entry.created_at);
+      const dateHeading = formatDateHeading(entry.created_at, intlLoc);
       if (dateHeading !== currentDateHeading) {
         currentDateHeading = dateHeading;
         lines.push(`## ${dateHeading}`);
       }
 
       lines.push(
-        `- ${formatTimeOnly(entry.created_at)} - ${categoryDisplayLabel(entry.category)}`,
+        `- ${formatTimeOnly(entry.created_at, intlLoc)} - ${entryCategoryUiLabel(entry.category)}`,
       );
       if (entry.tags.length > 0) {
-        lines.push(`Tags: ${entry.tags.join(", ")}`);
+        lines.push(`${t("export.tagsPrefix")} ${entry.tags.join(", ")}`);
       }
       lines.push(`${entry.text}`, "");
     });
@@ -2082,23 +2129,25 @@ export default function Home() {
 
   function buildTextExport(entriesToExport: Entry[]): string {
     const lines: string[] = [
-      "Remembrain Export",
-      `Generated: ${new Date().toLocaleString()}`,
-      `Total entries: ${entriesToExport.length}`,
+      t("common.exportPlainHeading"),
+      `${t("common.generatedPrefix")} ${new Date().toLocaleString(intlLoc)}`,
+      `${t("common.entryExportMetaLine")} ${entriesToExport.length}`,
       "",
     ];
 
     let currentDateHeading = "";
     entriesToExport.forEach((entry) => {
-      const dateHeading = formatDateHeading(entry.created_at);
+      const dateHeading = formatDateHeading(entry.created_at, intlLoc);
       if (dateHeading !== currentDateHeading) {
         currentDateHeading = dateHeading;
         lines.push(dateHeading);
       }
 
-      lines.push(`${formatTimeOnly(entry.created_at)} - ${categoryDisplayLabel(entry.category)}`);
+      lines.push(
+        `${formatTimeOnly(entry.created_at, intlLoc)} - ${entryCategoryUiLabel(entry.category)}`,
+      );
       if (entry.tags.length > 0) {
-        lines.push(`Tags: ${entry.tags.join(", ")}`);
+        lines.push(`${t("export.tagsPrefix")} ${entry.tags.join(", ")}`);
       }
       lines.push(`${entry.text}`, "");
     });
@@ -2126,15 +2175,15 @@ export default function Home() {
     }
 
     return buildMarkdownExport(exportableEntries);
-  }, [exportFormat, exportableEntries]);
+  }, [exportFormat, exportableEntries, intlLoc, t, entryCategoryUiLabel]);
 
   async function handleCopyExport() {
     try {
       await navigator.clipboard.writeText(exportContent);
-      setCopyFeedback("Copied!");
+      setCopyFeedback(t("common.copied"));
       setTimeout(() => setCopyFeedback(""), 1500);
     } catch {
-      setCopyFeedback("Copy failed");
+      setCopyFeedback(t("common.copyFailed"));
       setTimeout(() => setCopyFeedback(""), 1500);
     }
   }
@@ -2157,7 +2206,7 @@ export default function Home() {
   if (!authHydrated) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-zinc-100 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
-        <p className="text-sm text-zinc-600 dark:text-zinc-400">Loading…</p>
+        <p className="text-sm text-zinc-600 dark:text-zinc-400">{t("common.loading")}</p>
       </div>
     );
   }
@@ -2172,9 +2221,7 @@ export default function Home() {
           <header className="space-y-1 text-center">
             <h1 className="text-2xl font-semibold tracking-tight">Remembrain</h1>
             <p className="text-sm text-zinc-600 dark:text-zinc-400">
-              {authView === "forgotPassword"
-                ? "Enter your email and we’ll send a reset link."
-                : "Sign in to access your journal."}
+              {authView === "forgotPassword" ? t("common.forgotIntro") : t("common.signInTitle")}
             </p>
           </header>
 
@@ -2184,7 +2231,7 @@ export default function Home() {
               className="space-y-4 rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
             >
               <label className="block text-sm font-medium">
-                Email
+                {t("common.email")}
                 <input
                   type="email"
                   name="email"
@@ -2209,7 +2256,7 @@ export default function Home() {
                 disabled={authBusy}
                 className="w-full min-h-11 rounded-xl bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
               >
-                {authBusy ? "Please wait…" : "Send reset email"}
+                {authBusy ? t("common.pleaseWait") : t("common.sendResetEmail")}
               </button>
 
               <p className="text-center text-sm">
@@ -2222,7 +2269,7 @@ export default function Home() {
                     setAuthNotice(null);
                   }}
                 >
-                  Back to sign in
+                  {t("common.backToSignIn")}
                 </button>
               </p>
             </form>
@@ -2232,7 +2279,7 @@ export default function Home() {
               className="space-y-4 rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
             >
               <label className="block text-sm font-medium">
-                Email
+                {t("common.email")}
                 <input
                   type="email"
                   name="email"
@@ -2245,7 +2292,7 @@ export default function Home() {
                 />
               </label>
               <label className="block text-sm font-medium">
-                Password
+                {t("common.password")}
                 <input
                   type="password"
                   name="password"
@@ -2261,7 +2308,7 @@ export default function Home() {
               </label>
               {authMode === "signUp" ? (
                 <label className="block text-sm font-medium">
-                  Confirm password
+                  {t("common.confirmPassword")}
                   <input
                     type="password"
                     name="confirmPassword"
@@ -2289,7 +2336,11 @@ export default function Home() {
                 disabled={authBusy}
                 className="w-full min-h-11 rounded-xl bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
               >
-                {authBusy ? "Please wait…" : authMode === "signUp" ? "Create account" : "Sign in"}
+                {authBusy
+                  ? t("common.pleaseWait")
+                  : authMode === "signUp"
+                    ? t("common.createAccount")
+                    : t("common.signIn")}
               </button>
 
               {authMode === "signIn" ? (
@@ -2303,13 +2354,13 @@ export default function Home() {
                       setAuthNotice(null);
                     }}
                   >
-                    Forgot password?
+                    {t("common.forgotPassword")}
                   </button>
                 </p>
               ) : null}
 
               <p className="text-center text-sm text-zinc-600 dark:text-zinc-400">
-                {authMode === "signUp" ? "Already have an account?" : "Need an account?"}{" "}
+                {authMode === "signUp" ? t("common.haveAccount") : t("common.needAccount")}{" "}
                 <button
                   type="button"
                   className="font-medium text-zinc-900 underline underline-offset-2 dark:text-zinc-100"
@@ -2320,7 +2371,7 @@ export default function Home() {
                     setAuthConfirmPassword("");
                   }}
                 >
-                  {authMode === "signUp" ? "Sign in" : "Sign up"}
+                  {authMode === "signUp" ? t("common.signIn") : t("common.signUp")}
                 </button>
               </p>
             </form>
@@ -2339,9 +2390,7 @@ export default function Home() {
             <p className="text-xs font-normal text-zinc-500 dark:text-zinc-500">
               {greetingLine}
             </p>
-            <p className="text-sm text-zinc-600 dark:text-zinc-400">
-              Capture your thoughts and keep your memories close.
-            </p>
+            <p className="text-sm text-zinc-600 dark:text-zinc-400">{t("common.captureSubtitle")}</p>
           </div>
           <div className="flex shrink-0 flex-wrap items-center gap-2">
             <button
@@ -2352,8 +2401,8 @@ export default function Home() {
                 (activeTab === "chat" && chatHeaderRefreshing)
               }
               className="inline-flex h-10 min-w-10 items-center justify-center rounded-full border border-zinc-300 bg-white text-sm transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-900 dark:hover:bg-zinc-800"
-              aria-label={activeTab === "entries" ? "Refresh entries" : "Refresh chat"}
-              title={activeTab === "entries" ? "Refresh entries" : "Refresh chat"}
+              aria-label={activeTab === "entries" ? t("common.refreshEntries") : t("common.refreshChat")}
+              title={activeTab === "entries" ? t("common.refreshEntries") : t("common.refreshChat")}
             >
               <RefreshGlyph
                 className={`h-5 w-5 text-zinc-700 dark:text-zinc-200 ${
@@ -2367,8 +2416,8 @@ export default function Home() {
             <Link
               href="/settings"
               className="inline-flex h-10 min-w-10 items-center justify-center rounded-full border border-zinc-300 bg-white px-3 text-sm transition hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:hover:bg-zinc-800"
-              aria-label="Settings"
-              title="Settings"
+              aria-label={t("common.settings")}
+              title={t("common.settings")}
             >
               <span className="text-base leading-none" aria-hidden>
                 ⚙️
@@ -2380,7 +2429,7 @@ export default function Home() {
               disabled={authBusy}
               className="shrink-0 rounded-full border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-800 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
             >
-              Log out
+              {t("common.logOut")}
             </button>
           </div>
         </header>
@@ -2396,7 +2445,7 @@ export default function Home() {
                   : "border-2 border-zinc-200 bg-white text-zinc-700 hover:border-zinc-300 hover:bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:border-zinc-500 dark:hover:bg-zinc-800"
               }`}
             >
-              Entries
+              {t("common.entriesTab")}
             </button>
             <button
               type="button"
@@ -2407,7 +2456,7 @@ export default function Home() {
                   : "border-2 border-zinc-200 bg-white text-zinc-700 hover:border-zinc-300 hover:bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:border-zinc-500 dark:hover:bg-zinc-800"
               }`}
             >
-              Chat
+              {t("common.chatTab")}
             </button>
           </div>
         </div>
@@ -2447,14 +2496,14 @@ export default function Home() {
           className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
         >
           <label htmlFor="entry" className="mb-2 block text-sm font-medium">
-            New Journal Entry
+            {t("common.newJournalEntry")}
           </label>
           <div className="relative">
             <textarea
               id="entry"
               value={text}
               onChange={(event) => setText(event.target.value)}
-              placeholder="What are you thinking about?"
+              placeholder={t("common.placeholderEntry")}
               disabled={isSaving}
               className="min-h-32 w-full resize-y rounded-xl border border-zinc-300 bg-zinc-50 px-3 py-2 pr-14 text-base outline-none transition focus:border-zinc-400 focus:ring-2 focus:ring-zinc-300 disabled:cursor-not-allowed disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-950 dark:focus:border-zinc-500 dark:focus:ring-zinc-700"
             />
@@ -2469,14 +2518,14 @@ export default function Home() {
                   }
                 }}
                 disabled={isSaving}
-                aria-label={isListening ? "Stop voice input" : "Start voice input"}
+                aria-label={isListening ? t("common.voiceStop") : t("common.voiceStart")}
                 className={`absolute bottom-3 right-3 inline-flex h-10 min-w-10 items-center justify-center rounded-full px-3 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${
                   isListening
                     ? "animate-pulse bg-red-600 text-white hover:bg-red-500"
                     : "bg-zinc-900 text-white hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
                 }`}
               >
-                {isListening ? "Listening..." : "Mic"}
+                {isListening ? t("common.listening") : t("common.mic")}
               </button>
             ) : null}
           </div>
@@ -2490,10 +2539,10 @@ export default function Home() {
             aria-busy={isSaving}
             aria-live="polite"
           >
-            {isSaving ? saveInlineStatus || "Saving..." : "Save"}
+            {isSaving ? saveInlineStatus || t("common.saving") : t("common.save")}
           </button>
           <div className="mt-6 space-y-2 border-t border-zinc-200 pt-5 dark:border-zinc-800">
-            <p className="text-sm font-medium">Category</p>
+            <p className="text-sm font-medium">{t("common.category")}</p>
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
@@ -2505,7 +2554,7 @@ export default function Home() {
                     : "bg-zinc-200 text-zinc-700 hover:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
                 }`}
               >
-                Auto
+                {t("common.auto")}
               </button>
               {ALL_CATEGORIES.map((category) => (
                 <button
@@ -2519,7 +2568,7 @@ export default function Home() {
                       : "bg-zinc-200 text-zinc-700 hover:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
                   }`}
                 >
-                  {CATEGORY_LABELS[category]}
+                  {categoryLabelForLocale(category, locale)}
                 </button>
               ))}
             </div>
@@ -2528,20 +2577,20 @@ export default function Home() {
 
         <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 className="text-lg font-medium">Stats</h2>
+            <h2 className="text-lg font-medium">{t("common.stats")}</h2>
             <button
               type="button"
               onClick={() => setStatsExpanded((open) => !open)}
               className="rounded-lg border border-zinc-300 bg-zinc-50 px-3 py-1.5 text-xs font-medium transition hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-950 dark:hover:bg-zinc-900"
             >
-              {statsExpanded ? "Hide stats" : "Show stats"}
+              {statsExpanded ? t("common.hideStats") : t("common.showStats")}
             </button>
           </div>
           {statsExpanded ? (
             <div className="mt-4 space-y-8">
               <div>
                 <p className="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
-                  Total entries
+                  {t("common.statsTotalLabel")}
                 </p>
                 <p className="mt-1 text-4xl font-semibold tabular-nums tracking-tight">
                   {entries.length}
@@ -2550,7 +2599,7 @@ export default function Home() {
 
               <div>
                 <p className="mb-3 text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
-                  By category
+                  {t("common.statsByCategory")}
                 </p>
                 <div className="space-y-2">
                   {statsCategoryRows.map(({ key, label, count, barClass }) => (
@@ -2581,7 +2630,7 @@ export default function Home() {
 
               <div>
                 <p className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
-                  Last 30 days
+                  {t("common.statsLast30")}
                 </p>
                 <div className="flex gap-3">
                   <div className="flex shrink-0 flex-col justify-between pb-5 pt-1 text-right text-[10px] tabular-nums text-zinc-500 dark:text-zinc-400">
@@ -2626,7 +2675,7 @@ export default function Home() {
         </section>
 
         <section className="space-y-3">
-          <h2 className="text-lg font-medium">Saved Entries</h2>
+          <h2 className="text-lg font-medium">{t("common.savedEntries")}</h2>
           {saveNoticeMessage ? (
             <p className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700 dark:border-emerald-900/70 dark:bg-emerald-950/30 dark:text-emerald-200">
               {saveNoticeMessage}
@@ -2639,25 +2688,25 @@ export default function Home() {
           ) : null}
           {isLoading ? (
             <p className="rounded-2xl border border-dashed border-zinc-300 bg-white p-4 text-sm text-zinc-600 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400">
-              Loading entries...
+              {t("common.loadingEntries")}
             </p>
           ) : entries.length === 0 ? (
             <p className="rounded-2xl border border-dashed border-zinc-300 bg-white p-4 text-sm text-zinc-600 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400">
-              No entries yet. Start with your first memory.
+              {t("common.noEntriesYet")}
             </p>
           ) : (
             <>
               <div className="space-y-3 rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <label htmlFor="entry-search" className="block text-sm font-medium">
-                    Search Entries
+                    {t("common.searchEntries")}
                   </label>
                   <button
                     type="button"
                     onClick={() => setIsExportModalOpen(true)}
                     className="rounded-lg border border-zinc-300 bg-zinc-50 px-3 py-1.5 text-xs font-medium transition hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-950 dark:hover:bg-zinc-900"
                   >
-                    Export
+                    {t("common.export")}
                   </button>
                 </div>
                 <input
@@ -2665,7 +2714,7 @@ export default function Home() {
                   type="search"
                   value={searchQuery}
                   onChange={(event) => setSearchQuery(event.target.value)}
-                  placeholder="Search text or tags…"
+                  placeholder={t("common.searchPlaceholder")}
                   className="w-full rounded-xl border border-zinc-300 bg-zinc-50 px-3 py-2 text-sm outline-none transition focus:border-zinc-400 focus:ring-2 focus:ring-zinc-300 dark:border-zinc-700 dark:bg-zinc-950 dark:focus:border-zinc-500 dark:focus:ring-zinc-700"
                 />
                 <div className="flex flex-wrap gap-2">
@@ -2678,7 +2727,7 @@ export default function Home() {
                         : "bg-zinc-200 text-zinc-700 hover:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
                     }`}
                   >
-                    All
+                    {t("common.all")}
                   </button>
                   {ALL_CATEGORIES.map((category) => (
                     <button
@@ -2691,7 +2740,7 @@ export default function Home() {
                           : "bg-zinc-200 text-zinc-700 hover:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
                       }`}
                     >
-                      {CATEGORY_LABELS[category]}
+                      {categoryLabelForLocale(category, locale)}
                     </button>
                   ))}
                 </div>
@@ -2699,7 +2748,7 @@ export default function Home() {
                   <div className="space-y-2">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
-                        Tags ({tagFrequencyList.length})
+                        {t("common.tagsCount", { count: tagFrequencyList.length })}
                       </p>
                       {activeTagFilters.length > 0 ? (
                         <button
@@ -2707,7 +2756,7 @@ export default function Home() {
                           onClick={() => setActiveTagFilters([])}
                           className="text-xs font-medium text-zinc-600 underline-offset-2 hover:underline dark:text-zinc-400"
                         >
-                          Clear tags
+                          {t("common.clearTags")}
                         </button>
                       ) : null}
                     </div>
@@ -2736,7 +2785,10 @@ export default function Home() {
                   </div>
                 ) : null}
                 <p className="text-sm text-zinc-600 dark:text-zinc-400">
-                  Showing {filteredEntries.length} of {entries.length} entries
+                  {t("common.showingCount", {
+                    filtered: filteredEntries.length,
+                    total: entries.length,
+                  })}
                 </p>
               </div>
 
@@ -2751,14 +2803,14 @@ export default function Home() {
                       : "border-zinc-800 bg-white text-zinc-900 hover:bg-zinc-50 dark:border-zinc-300 dark:bg-zinc-950 dark:text-zinc-100 dark:hover:bg-zinc-900"
                   }`}
                 >
-                  {entriesSelectMode ? "Cancel" : "Select"}
+                  {entriesSelectMode ? t("common.cancel") : t("common.select")}
                 </button>
               </div>
 
               {entriesSelectMode && filteredEntries.length > 0 ? (
                 <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-zinc-200 bg-zinc-50 px-3 py-2.5 dark:border-zinc-700 dark:bg-zinc-900/80">
                   <span className="text-sm font-medium text-zinc-800 dark:text-zinc-200">
-                    {selectedEntryIds.size} selected
+                    {t("common.selectedCount", { count: selectedEntryIds.size })}
                   </span>
                   <button
                     type="button"
@@ -2766,7 +2818,7 @@ export default function Home() {
                     disabled={selectedEntryIds.size === 0}
                     className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40 dark:bg-red-700"
                   >
-                    Delete selected
+                    {t("common.deleteSelected")}
                   </button>
                   <button
                     type="button"
@@ -2775,14 +2827,14 @@ export default function Home() {
                     }
                     className="rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-xs dark:border-zinc-600 dark:bg-zinc-950"
                   >
-                    {allFilteredSelected ? "Deselect all" : "Select all"}
+                    {allFilteredSelected ? t("common.deselectAll") : t("common.selectAll")}
                   </button>
                 </div>
               ) : null}
 
               {filteredEntries.length === 0 ? (
                 <p className="rounded-2xl border border-dashed border-zinc-300 bg-white p-4 text-sm text-zinc-600 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400">
-                  No entries match your search.
+                  {t("common.noEntriesMatch")}
                 </p>
               ) : (
                 <div className="space-y-5">
@@ -2840,7 +2892,7 @@ export default function Home() {
                               <div className="min-w-0 flex-1">
                                 <div className="flex items-start justify-between gap-3">
                                   <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                                    {formatTimestamp(entry.created_at)}
+                                    {formatTimestamp(entry.created_at, intlLoc)}
                                   </p>
                                   <div className="flex flex-wrap items-center justify-end gap-2">
                                     {editingEntryId === entry.id && !entriesSelectMode ? (
@@ -2854,12 +2906,13 @@ export default function Home() {
                                       >
                                         {!isKnownCategory(entry.category) ? (
                                           <option value={entry.category}>
-                                            {categoryDisplayLabel(entry.category)} (older)
+                                            {entryCategoryUiLabel(entry.category)}{" "}
+                                            {t("common.categoryOlder")}
                                           </option>
                                         ) : null}
                                         {ALL_CATEGORIES.map((category) => (
                                           <option key={category} value={category}>
-                                            {CATEGORY_LABELS[category]}
+                                            {categoryLabelForLocale(category, locale)}
                                           </option>
                                         ))}
                                       </select>
@@ -2868,7 +2921,7 @@ export default function Home() {
                                         data-entry-longpress-ignore
                                         className={`inline-flex rounded-full px-2 py-1 text-xs font-medium ${categoryBadgeClass(entry.category)}`}
                                       >
-                                        {categoryDisplayLabel(entry.category)}
+                                        {entryCategoryUiLabel(entry.category)}
                                       </span>
                                     )}
                                     {editingEntryId !== entry.id &&
@@ -2900,7 +2953,7 @@ export default function Home() {
                                       <>
                                         <button
                                           type="button"
-                                          aria-label="Edit entry"
+                                          aria-label={t("common.editEntryAria")}
                                           onClick={(e) => {
                                             e.stopPropagation();
                                             handleStartEdit(entry);
@@ -2912,7 +2965,7 @@ export default function Home() {
                                         </button>
                                         <button
                                           type="button"
-                                          aria-label="Delete entry"
+                                          aria-label={t("common.deleteEntryAria")}
                                           onClick={(e) => {
                                             e.stopPropagation();
                                             void handleDeleteEntry(entry.id);
@@ -2972,7 +3025,7 @@ export default function Home() {
                                             commitEditingTagFromInput();
                                           }
                                         }}
-                                        placeholder="Add tag..."
+                                        placeholder={t("common.tagPlaceholder")}
                                         className="min-h-9 w-full min-w-0 rounded-lg border border-zinc-300 bg-white px-2 py-1.5 text-xs outline-none transition focus:border-zinc-400 focus:ring-2 focus:ring-zinc-300 dark:border-zinc-600 dark:bg-zinc-950 dark:focus:border-zinc-500 dark:focus:ring-zinc-700 sm:max-w-xs"
                                       />
                                       <datalist id={`edit-tag-datalist-${entry.id}`}>
@@ -3006,7 +3059,7 @@ export default function Home() {
                                         disabled={!editingText.trim() || isUpdatingEntry}
                                         className="rounded-lg bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
                                       >
-                                        {isUpdatingEntry ? "Saving..." : "Save"}
+                                        {isUpdatingEntry ? t("common.saving") : t("common.save")}
                                       </button>
                                       <button
                                         type="button"
@@ -3017,7 +3070,7 @@ export default function Home() {
                                         disabled={isUpdatingEntry}
                                         className="rounded-lg border border-zinc-300 bg-zinc-50 px-3 py-1.5 text-xs font-medium transition hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-950 dark:hover:bg-zinc-900"
                                       >
-                                        Cancel
+                                        {t("common.cancel")}
                                       </button>
                                     </div>
                                   </>
@@ -3048,7 +3101,7 @@ export default function Home() {
               <button
                 type="button"
                 className="fixed inset-y-0 right-0 left-[78vw] z-[69] bg-zinc-950/40 backdrop-blur-[1px] lg:hidden"
-                aria-label="Close menu"
+                aria-label={t("common.closeMenu")}
                 onClick={() => setChatSidebarOpen(false)}
               />
             ) : null}
@@ -3059,14 +3112,14 @@ export default function Home() {
                 onClick={() => setChatSidebarOpen(true)}
                 className="min-h-11 flex-1 rounded-xl border border-zinc-300 bg-white px-3 text-sm font-medium dark:border-zinc-700 dark:bg-zinc-900"
               >
-                Chats
+                {t("common.chats")}
               </button>
               <button
                 type="button"
                 onClick={() => void createNewChatThread()}
                 className="min-h-11 flex-1 rounded-xl bg-zinc-900 px-3 text-sm font-medium text-white dark:bg-zinc-100 dark:text-zinc-900"
               >
-                + New chat
+                {t("common.newChat")}
               </button>
             </div>
 
@@ -3097,26 +3150,28 @@ export default function Home() {
                     type="button"
                     className="flex min-h-12 min-w-12 items-center justify-center rounded-xl text-zinc-700 transition hover:bg-zinc-100 active:bg-zinc-200 dark:text-zinc-200 dark:hover:bg-zinc-800 dark:active:bg-zinc-700"
                     onClick={() => setChatSidebarOpen(false)}
-                    aria-label="Back"
+                    aria-label={t("common.back")}
                   >
                     <span className="text-xl leading-none" aria-hidden>
                       ←
                     </span>
                   </button>
                   <h2 className="pointer-events-none text-center text-base font-semibold text-zinc-900 dark:text-zinc-100">
-                    Chats
+                    {t("common.chats")}
                   </h2>
                   <button
                     type="button"
                     onClick={() => void createNewChatThread()}
                     className="justify-self-end whitespace-nowrap rounded-xl bg-zinc-900 px-3 py-3 text-sm font-semibold text-white dark:bg-zinc-100 dark:text-zinc-900"
                   >
-                    + New chat
+                    {t("common.newChat")}
                   </button>
                 </div>
 
                 <div className="hidden items-center justify-between border-b border-zinc-200 p-3 dark:border-zinc-800 lg:flex lg:rounded-t-2xl">
-                  <span className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">Chats</span>
+                  <span className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+                    {t("common.chats")}
+                  </span>
                 </div>
                 <div className="hidden p-2 lg:block">
                   <button
@@ -3124,7 +3179,7 @@ export default function Home() {
                     onClick={() => void createNewChatThread()}
                     className="w-full rounded-xl border border-dashed border-zinc-300 bg-zinc-50 py-2.5 text-sm font-medium text-zinc-800 dark:border-zinc-600 dark:bg-zinc-950 dark:text-zinc-200"
                   >
-                    + New chat
+                    {t("common.newChat")}
                   </button>
                 </div>
                 <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
@@ -3152,16 +3207,16 @@ export default function Home() {
                     className="flex min-h-0 flex-1 flex-col space-y-1 overflow-y-auto p-2 pt-0 pb-[max(0.5rem,env(safe-area-inset-bottom))]"
                   >
                 {chatThreadsLoading ? (
-                  <li className="px-2 text-sm text-zinc-500">Loading…</li>
+                  <li className="px-2 text-sm text-zinc-500">{t("common.loading")}</li>
                 ) : chatThreads.length === 0 ? (
                   <li className="px-2 py-6 text-center text-sm text-zinc-500 dark:text-zinc-400">
-                    <p>Ask Remembrain about your life</p>
+                    <p>{t("common.askRemembrain")}</p>
                     <button
                       type="button"
                       onClick={() => void createNewChatThread()}
                       className="mt-3 w-full rounded-xl bg-zinc-900 py-2.5 text-sm font-medium text-white dark:bg-zinc-100 dark:text-zinc-900"
                     >
-                      + New chat
+                      {t("common.newChat")}
                     </button>
                   </li>
                 ) : (
@@ -3180,17 +3235,17 @@ export default function Home() {
                         }`}
                       >
                         <div className="truncate font-medium text-zinc-900 dark:text-zinc-100">
-                          {thread.title?.trim() || "New chat"}
+                          {thread.title?.trim() || t("common.newChatTitle")}
                         </div>
                         <div className="text-xs text-zinc-500 dark:text-zinc-400">
-                          {formatShortThreadDate(thread.updated_at)}
+                          {formatShortThreadDate(thread.updated_at, intlLoc)}
                         </div>
                       </button>
                       <button
                         type="button"
                         onClick={() => void handleDeleteChatThread(thread.id)}
                         className="shrink-0 rounded-lg p-2 text-zinc-400 opacity-100 transition hover:bg-zinc-200 hover:text-red-600 sm:opacity-0 sm:group-hover:opacity-100 dark:hover:bg-zinc-700"
-                        aria-label="Delete chat"
+                        aria-label={t("common.deleteChatAria")}
                       >
                         🗑️
                       </button>
@@ -3205,7 +3260,7 @@ export default function Home() {
             <section className="flex min-h-[min(60vh,520px)] min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
               {!isLoading && entries.length === 0 ? (
                 <p className="shrink-0 border-b border-zinc-200 px-4 py-3 text-center text-sm text-zinc-600 dark:border-zinc-800 dark:text-zinc-400">
-                  Add some entries first, then come back here to ask questions about your life
+                  {t("common.addEntriesBannerShort")}
                 </p>
               ) : null}
               {chatError ? (
@@ -3237,7 +3292,7 @@ export default function Home() {
                   </div>
                 ) : null}
                 {threadMessagesLoading ? (
-                  <p className="py-6 text-center text-sm text-zinc-500">Loading messages…</p>
+                  <p className="py-6 text-center text-sm text-zinc-500">{t("common.loadingMessages")}</p>
                 ) : null}
                 {!threadMessagesLoading &&
                 !activeThreadId &&
@@ -3245,7 +3300,7 @@ export default function Home() {
                 chatThreads.length === 0 &&
                 entries.length === 0 ? (
                   <p className="px-2 py-10 text-center text-sm text-zinc-600 dark:text-zinc-400">
-                    Add some entries first, then come back to ask questions about your life.
+                    {t("common.noEntriesForSuggestions")}
                   </p>
                 ) : null}
                 {!threadMessagesLoading &&
@@ -3255,14 +3310,14 @@ export default function Home() {
                 entries.length > 0 ? (
                   <div className="flex flex-col items-center gap-3 py-10 text-center">
                     <p className="text-sm text-zinc-600 dark:text-zinc-400">
-                      Ask Remembrain about your life
+                      {t("common.askRemembrain")}
                     </p>
                     <button
                       type="button"
                       onClick={() => void createNewChatThread()}
                       className="rounded-xl bg-zinc-900 px-5 py-2.5 text-sm font-medium text-white dark:bg-zinc-100 dark:text-zinc-900"
                     >
-                      + New chat
+                      {t("common.newChat")}
                     </button>
                   </div>
                 ) : null}
@@ -3272,7 +3327,7 @@ export default function Home() {
                 !threadMessagesLoading &&
                 entries.length === 0 ? (
                   <p className="px-2 py-6 text-center text-sm text-zinc-600 dark:text-zinc-400">
-                    Add some entries first, then come back to ask questions about your life.
+                    {t("common.noEntriesForSuggestions")}
                   </p>
                 ) : null}
                 {activeThreadId &&
@@ -3284,12 +3339,12 @@ export default function Home() {
                     {suggestedQuestionsLoadedKey !== entriesSuggestionKey ||
                     suggestedQuestionsLoading ? (
                       <p className="text-center text-sm text-zinc-500 dark:text-zinc-400">
-                        Finding suggestions…
+                        {t("common.findingSuggestions")}
                       </p>
                     ) : suggestedChatQuestions.length > 0 ? (
                       <>
                         <p className="text-center text-sm text-zinc-500 dark:text-zinc-400">
-                          Try asking:
+                          {t("common.tryAsking")}
                         </p>
                         <div className="flex flex-col gap-2 sm:items-center">
                           {suggestedChatQuestions.map((q, index) => (
@@ -3306,7 +3361,7 @@ export default function Home() {
                       </>
                     ) : (
                       <p className="text-center text-sm text-zinc-600 dark:text-zinc-400">
-                        Ask a question below to get started.
+                        {t("common.askQuestionBelow")}
                       </p>
                     )}
                   </div>
@@ -3332,7 +3387,7 @@ export default function Home() {
                     <div
                       role="status"
                       aria-live="polite"
-                      aria-label="Assistant is typing"
+                      aria-label={t("common.assistantTyping")}
                       className="flex max-w-[min(100%,24rem)] items-center gap-1.5 rounded-2xl bg-zinc-200 px-3.5 py-2.5 dark:bg-zinc-700"
                     >
                       <span className="chat-typing-dot inline-block h-1.5 w-1.5 rounded-full bg-zinc-500 dark:bg-zinc-300" />
@@ -3365,8 +3420,8 @@ export default function Home() {
                   }}
                   placeholder={
                     !isLoading && entries.length === 0
-                      ? "Add entries on the Entries tab first…"
-                      : "Ask a question…"
+                      ? t("common.chatPlaceholderEntriesFirst")
+                      : t("common.askPlaceholder")
                   }
                   disabled={isLoading || entries.length === 0 || !activeThreadId}
                   className="max-h-40 min-h-11 w-full resize-none rounded-xl border border-zinc-300 bg-zinc-50 px-3 py-2.5 text-base outline-none transition focus:border-zinc-400 focus:ring-2 focus:ring-zinc-300 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-950 dark:focus:border-zinc-500 dark:focus:ring-zinc-700"
@@ -3382,7 +3437,7 @@ export default function Home() {
                   }
                   className="shrink-0 rounded-xl bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300 sm:w-auto sm:self-stretch sm:px-6"
                 >
-                  Send
+                  {t("common.send")}
                 </button>
               </form>
             </section>
@@ -3402,12 +3457,12 @@ export default function Home() {
         >
           <div className="mx-auto w-full max-w-lg rounded-2xl border border-zinc-200 bg-white p-4 shadow-xl dark:border-zinc-800 dark:bg-zinc-900">
             <div className="mb-3 flex items-center justify-between gap-2">
-              <h3 className="text-base font-semibold">Export Entries</h3>
+              <h3 className="text-base font-semibold">{t("common.exportTitle")}</h3>
               <button
                 type="button"
                 onClick={() => setIsExportModalOpen(false)}
                 className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-300 bg-zinc-50 text-sm transition hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-950 dark:hover:bg-zinc-900"
-                aria-label="Close export modal"
+                aria-label={t("common.closeExportModal")}
               >
                 ✕
               </button>
@@ -3415,12 +3470,12 @@ export default function Home() {
 
             <div className="space-y-4">
               <div className="space-y-2">
-                <p className="text-sm font-medium">Format</p>
+                <p className="text-sm font-medium">{t("common.formatLabel")}</p>
                 <div className="flex flex-wrap gap-2">
                   {[
-                    { id: "markdown", label: "Markdown (.md)" },
-                    { id: "text", label: "Plain text (.txt)" },
-                    { id: "json", label: "JSON (.json)" },
+                    { id: "markdown" as const, label: t("common.markdownExport") },
+                    { id: "text" as const, label: t("common.plainExport") },
+                    { id: "json" as const, label: t("common.jsonExport") },
                   ].map((option) => (
                     <button
                       key={option.id}
@@ -3439,7 +3494,7 @@ export default function Home() {
               </div>
 
               <div className="space-y-2">
-                <p className="text-sm font-medium">Scope</p>
+                <p className="text-sm font-medium">{t("common.scopeLabel")}</p>
                 <div className="space-y-1 text-sm">
                   <label className="flex items-center gap-2">
                     <input
@@ -3449,7 +3504,7 @@ export default function Home() {
                       checked={exportScope === "all"}
                       onChange={() => setExportScope("all")}
                     />
-                    All entries
+                    {t("common.scopeAll")}
                   </label>
                   {isFilterActive ? (
                     <label className="flex items-center gap-2">
@@ -3460,7 +3515,7 @@ export default function Home() {
                         checked={exportScope === "filtered"}
                         onChange={() => setExportScope("filtered")}
                       />
-                      Currently filtered entries
+                      {t("common.scopeFiltered")}
                     </label>
                   ) : null}
                   <label className="flex items-center gap-2">
@@ -3471,13 +3526,13 @@ export default function Home() {
                       checked={exportScope === "date-range"}
                       onChange={() => setExportScope("date-range")}
                     />
-                    By date range
+                    {t("common.scopeDateRange")}
                   </label>
                 </div>
                 {exportScope === "date-range" ? (
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                     <label className="text-xs">
-                      Start date
+                      {t("common.startDate")}
                       <input
                         type="date"
                         value={exportStartDate}
@@ -3486,7 +3541,7 @@ export default function Home() {
                       />
                     </label>
                     <label className="text-xs">
-                      End date
+                      {t("common.endDate")}
                       <input
                         type="date"
                         value={exportEndDate}
@@ -3499,7 +3554,7 @@ export default function Home() {
               </div>
 
               <div className="space-y-2">
-                <p className="text-sm font-medium">Categories</p>
+                <p className="text-sm font-medium">{t("common.categoriesLabel")}</p>
                 <div className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-3">
                   {ALL_CATEGORIES.map((category) => (
                     <label key={category} className="flex items-center gap-2">
@@ -3508,14 +3563,14 @@ export default function Home() {
                         checked={selectedExportCategories.includes(category)}
                         onChange={() => toggleExportCategory(category)}
                       />
-                      {CATEGORY_LABELS[category]}
+                      {categoryLabelForLocale(category, locale)}
                     </label>
                   ))}
                 </div>
               </div>
 
               <p className="text-sm text-zinc-600 dark:text-zinc-400">
-                {exportableEntries.length} entries selected for export
+                {t("common.exportCountSelected", { count: exportableEntries.length })}
               </p>
 
               <div className="flex flex-wrap gap-2">
@@ -3524,14 +3579,14 @@ export default function Home() {
                   onClick={() => void handleCopyExport()}
                   className="rounded-lg bg-zinc-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
                 >
-                  Copy to Clipboard
+                  {t("common.copyClipboard")}
                 </button>
                 <button
                   type="button"
                   onClick={handleDownloadExport}
                   className="rounded-lg border border-zinc-300 bg-zinc-50 px-3 py-2 text-sm font-medium transition hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-950 dark:hover:bg-zinc-900"
                 >
-                  Download File
+                  {t("common.downloadFile")}
                 </button>
                 {copyFeedback ? (
                   <span className="self-center text-sm text-emerald-700 dark:text-emerald-300">
