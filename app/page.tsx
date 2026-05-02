@@ -55,6 +55,13 @@ type NewEntryCategorySelection = "auto" | Category;
 type ProcessApiEntry = { text?: string; category?: string };
 type ChatMessage = { role: "user" | "assistant"; content: string };
 
+type ChatThreadRow = {
+  id: string;
+  title: string | null;
+  updated_at: string;
+  created_at: string;
+};
+
 function formatTimestamp(timestamp: string): string {
   const datePart = new Intl.DateTimeFormat("en-US", {
     month: "short",
@@ -170,6 +177,14 @@ function formatBackupCalendarLabel(iso: string): string {
   }).format(new Date(iso));
 }
 
+function formatShortThreadDate(iso: string): string {
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(new Date(iso));
+}
+
 function parseLastBackupMs(iso: string | null): number | null {
   if (!iso) {
     return null;
@@ -235,10 +250,16 @@ export default function Home() {
   const [isSaving, setIsSaving] = useState(false);
   const [saveInlineStatus, setSaveInlineStatus] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"entries" | "ask">("entries");
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
-  const [askInput, setAskInput] = useState("");
-  const [isAsking, setIsAsking] = useState(false);
+  const [activeTab, setActiveTab] = useState<"entries" | "chat">("entries");
+  const [chatThreads, setChatThreads] = useState<ChatThreadRow[]>([]);
+  const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
+  const [threadMessages, setThreadMessages] = useState<ChatMessage[]>([]);
+  const [chatThreadsLoading, setChatThreadsLoading] = useState(false);
+  const [threadMessagesLoading, setThreadMessagesLoading] = useState(false);
+  const [chatSidebarOpen, setChatSidebarOpen] = useState(false);
+  const [chatInput, setChatInput] = useState("");
+  const [isChatSending, setIsChatSending] = useState(false);
+  const [chatError, setChatError] = useState<string | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [authHydrated, setAuthHydrated] = useState(false);
   const [authEmail, setAuthEmail] = useState("");
@@ -265,7 +286,7 @@ export default function Home() {
   /** When true, recognition `onend` skips committing transcript (e.g. save stopped the mic). */
   const speechDiscardCommitRef = useRef(false);
   const chatScrollRef = useRef<HTMLDivElement | null>(null);
-  const askTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const chatComposerRef = useRef<HTMLTextAreaElement | null>(null);
 
   const statsCategoryRows = useMemo(() => {
     const counts: Record<Category, number> = {
@@ -373,6 +394,21 @@ export default function Home() {
     setIsLoading(false);
   }, []);
 
+  const loadChatThreads = useCallback(async () => {
+    setChatThreadsLoading(true);
+    const { data, error } = await supabase
+      .from("chat_threads")
+      .select("id, title, updated_at, created_at")
+      .order("updated_at", { ascending: false });
+    if (error) {
+      setChatThreads([]);
+      setChatThreadsLoading(false);
+      return;
+    }
+    setChatThreads((data ?? []) as ChatThreadRow[]);
+    setChatThreadsLoading(false);
+  }, []);
+
   useEffect(() => {
     const timeoutId = setTimeout(() => {
       setIsMounted(true);
@@ -409,7 +445,12 @@ export default function Home() {
   useEffect(() => {
     function resetForSignedOut() {
       setEntries([]);
-      setChatMessages([]);
+      setChatThreads([]);
+      setActiveThreadId(null);
+      setThreadMessages([]);
+      setChatInput("");
+      setChatError(null);
+      setChatSidebarOpen(false);
       setIsLoading(false);
       setEditingEntryId(null);
       setEditingText("");
@@ -462,14 +503,77 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if (activeTab !== "ask") {
+    if (activeTab !== "chat") {
       return;
     }
     chatScrollRef.current?.scrollTo({
       top: chatScrollRef.current.scrollHeight,
       behavior: "smooth",
     });
-  }, [chatMessages, isAsking, activeTab]);
+  }, [threadMessages, isChatSending, activeTab]);
+
+  useEffect(() => {
+    if (activeTab !== "chat" || !session) {
+      return;
+    }
+    queueMicrotask(() => {
+      void loadChatThreads();
+    });
+  }, [activeTab, session, loadChatThreads]);
+
+  useEffect(() => {
+    if (activeTab !== "chat") {
+      return;
+    }
+    if (activeThreadId != null) {
+      return;
+    }
+    if (chatThreads.length === 0) {
+      return;
+    }
+    const nextId = chatThreads[0].id;
+    queueMicrotask(() => {
+      setActiveThreadId(nextId);
+    });
+  }, [activeTab, activeThreadId, chatThreads]);
+
+  useEffect(() => {
+    if (activeTab !== "chat" || !activeThreadId) {
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      await Promise.resolve();
+      if (cancelled) {
+        return;
+      }
+      setThreadMessagesLoading(true);
+      const { data, error } = await supabase
+        .from("chat_messages")
+        .select("role, content")
+        .eq("thread_id", activeThreadId)
+        .order("created_at", { ascending: true });
+      if (cancelled) {
+        return;
+      }
+      if (error) {
+        setThreadMessages([]);
+        setThreadMessagesLoading(false);
+        return;
+      }
+      const mapped: ChatMessage[] = (data ?? [])
+        .filter((row) => row.role === "user" || row.role === "assistant")
+        .map((row) => ({
+          role: row.role as "user" | "assistant",
+          content: String(row.content ?? ""),
+        }));
+      setThreadMessages(mapped);
+      setThreadMessagesLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, activeThreadId]);
 
   useEffect(() => {
     const id = window.setInterval(() => setClockTickMs(Date.now()), 60_000);
@@ -484,13 +588,114 @@ export default function Home() {
   const showBackupReminderBanner =
     isMounted && backupNeedsReminder && !bannerSnoozeActive;
 
-  function adjustAskTextareaHeight() {
-    const el = askTextareaRef.current;
+  function adjustChatComposerHeight() {
+    const el = chatComposerRef.current;
     if (!el) {
       return;
     }
     el.style.height = "auto";
     el.style.height = `${Math.min(Math.max(el.scrollHeight, 44), 160)}px`;
+  }
+
+  async function createNewChatThread() {
+    setChatError(null);
+    const { data, error } = await supabase.from("chat_threads").insert({}).select("id, title, updated_at, created_at").single();
+    if (error || !data) {
+      setChatError("Could not create chat.");
+      return;
+    }
+    setChatSidebarOpen(false);
+    setActiveThreadId(data.id);
+    setThreadMessages([]);
+    await loadChatThreads();
+  }
+
+  async function handleDeleteChatThread(threadId: string) {
+    const confirmed = window.confirm("Delete this chat?");
+    if (!confirmed) {
+      return;
+    }
+    setChatError(null);
+    const { error } = await supabase.from("chat_threads").delete().eq("id", threadId);
+    if (error) {
+      setChatError("Could not delete chat.");
+      return;
+    }
+    if (activeThreadId === threadId) {
+      setActiveThreadId(null);
+      setThreadMessages([]);
+    }
+    await loadChatThreads();
+  }
+
+  async function handleChatSubmit(event?: FormEvent<HTMLFormElement>, presetMessage?: string) {
+    event?.preventDefault();
+    const trimmed = (presetMessage ?? chatInput).trim();
+    if (!trimmed || isChatSending || entries.length === 0 || !activeThreadId) {
+      return;
+    }
+
+    setChatInput("");
+    const textarea = chatComposerRef.current;
+    if (textarea) {
+      textarea.style.height = "auto";
+    }
+
+    setChatError(null);
+    setIsChatSending(true);
+
+    try {
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          thread_id: activeThreadId,
+          message: trimmed,
+        }),
+      });
+
+      const payload = (await response.json()) as { response?: string; error?: string; thread_id?: string };
+
+      if (response.status === 401) {
+        setChatError("Your session expired. Please sign in again.");
+        setChatInput(trimmed);
+        return;
+      }
+
+      if (!response.ok) {
+        setChatError(
+          typeof payload.error === "string" ? payload.error : "Something went wrong. Try again.",
+        );
+        setChatInput(trimmed);
+        return;
+      }
+
+      await loadChatThreads();
+      const { data: rows } = await supabase
+        .from("chat_messages")
+        .select("role, content")
+        .eq("thread_id", activeThreadId)
+        .order("created_at", { ascending: true });
+      const mapped: ChatMessage[] = (rows ?? [])
+        .filter((row) => row.role === "user" || row.role === "assistant")
+        .map((row) => ({
+          role: row.role as "user" | "assistant",
+          content: String(row.content ?? ""),
+        }));
+      setThreadMessages(mapped);
+    } catch {
+      setChatError("Network error. Try again.");
+      setChatInput(trimmed);
+    } finally {
+      setIsChatSending(false);
+    }
+  }
+
+  function handleSuggestedQuestion(question: string) {
+    void handleChatSubmit(undefined, question);
   }
 
   async function handleDownloadFullBackup() {
@@ -648,62 +853,6 @@ export default function Home() {
       );
     } finally {
       setAuthBusy(false);
-    }
-  }
-
-  async function handleAskSubmit(event?: FormEvent<HTMLFormElement>) {
-    event?.preventDefault();
-    const trimmedQuestion = askInput.trim();
-    if (!trimmedQuestion || isAsking || entries.length === 0) {
-      return;
-    }
-
-    setAskInput("");
-    const textarea = askTextareaRef.current;
-    if (textarea) {
-      textarea.style.height = "auto";
-    }
-
-    setChatMessages((previous) => [...previous, { role: "user", content: trimmedQuestion }]);
-    setIsAsking(true);
-
-    try {
-      const response = await fetch("/api/ask", {
-        method: "POST",
-        credentials: "same-origin",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ question: trimmedQuestion }),
-      });
-
-      if (response.status === 401) {
-        setChatMessages((previous) => [
-          ...previous,
-          {
-            role: "assistant",
-            content: "Your session expired. Please sign in again.",
-          },
-        ]);
-        return;
-      }
-
-      const payload = (await response.json()) as { answer?: string };
-      const answerText =
-        typeof payload.answer === "string"
-          ? payload.answer
-          : "Something went wrong. Please try again.";
-      setChatMessages((previous) => [...previous, { role: "assistant", content: answerText }]);
-    } catch {
-      setChatMessages((previous) => [
-        ...previous,
-        {
-          role: "assistant",
-          content: "Something went wrong. Please try again.",
-        },
-      ]);
-    } finally {
-      setIsAsking(false);
     }
   }
 
@@ -1279,7 +1428,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-zinc-100 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
-      <main className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-8 sm:px-6">
+      <main className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-8 sm:px-6">
         <header className="flex flex-wrap items-start justify-between gap-4">
           <div className="space-y-1">
             <h1 className="text-2xl font-semibold tracking-tight">Remembrain</h1>
@@ -1311,14 +1460,14 @@ export default function Home() {
           </button>
           <button
             type="button"
-            onClick={() => setActiveTab("ask")}
+            onClick={() => setActiveTab("chat")}
             className={`rounded-full px-4 py-2 text-sm font-medium transition ${
-              activeTab === "ask"
+              activeTab === "chat"
                 ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
                 : "border border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
             }`}
           >
-            Ask
+            Chat
           </button>
         </div>
 
@@ -1780,80 +1929,240 @@ export default function Home() {
         </section>
           </>
         ) : (
-          <section className="flex min-h-[min(70vh,560px)] flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-            {!isLoading && entries.length === 0 ? (
-              <p className="border-b border-zinc-200 px-4 py-3 text-center text-sm text-zinc-600 dark:border-zinc-800 dark:text-zinc-400">
-                Add some entries first, then come back here.
-              </p>
+          <div className="flex w-full min-w-0 flex-col gap-3 lg:min-h-[min(80vh,800px)] lg:flex-row lg:items-stretch lg:gap-4">
+            {chatSidebarOpen ? (
+              <button
+                type="button"
+                className="fixed inset-0 z-40 bg-zinc-950/50 lg:hidden"
+                aria-label="Close menu"
+                onClick={() => setChatSidebarOpen(false)}
+              />
             ) : null}
-            <div
-              ref={chatScrollRef}
-              className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-3 py-4 sm:px-4"
+
+            <div className="flex items-center gap-2 lg:hidden">
+              <button
+                type="button"
+                onClick={() => setChatSidebarOpen(true)}
+                className="min-h-11 flex-1 rounded-xl border border-zinc-300 bg-white px-3 text-sm font-medium dark:border-zinc-700 dark:bg-zinc-900"
+              >
+                Chats
+              </button>
+              <button
+                type="button"
+                onClick={() => void createNewChatThread()}
+                className="min-h-11 flex-1 rounded-xl bg-zinc-900 px-3 text-sm font-medium text-white dark:bg-zinc-100 dark:text-zinc-900"
+              >
+                + New chat
+              </button>
+            </div>
+
+            <aside
+              className={`fixed inset-y-0 left-0 z-50 flex h-full max-h-screen w-[min(20rem,92vw)] flex-col border-r border-zinc-200 bg-white shadow-2xl transition-transform dark:border-zinc-800 dark:bg-zinc-900 lg:static lg:z-0 lg:h-auto lg:max-h-none lg:w-64 lg:shrink-0 lg:rounded-2xl lg:border lg:shadow-sm ${
+                chatSidebarOpen ? "translate-x-0" : "-translate-x-full"
+              } lg:translate-x-0`}
             >
-              {chatMessages.length === 0 && !isAsking ? (
-                <p className="py-8 text-center text-sm text-zinc-500 dark:text-zinc-400">
-                  Ask Remembrain about your life
+              <div className="flex items-center justify-between border-b border-zinc-200 p-3 dark:border-zinc-800 lg:rounded-t-2xl">
+                <span className="text-sm font-semibold">Chats</span>
+                <button
+                  type="button"
+                  className="rounded-lg p-2 text-zinc-500 hover:bg-zinc-100 lg:hidden dark:hover:bg-zinc-800"
+                  onClick={() => setChatSidebarOpen(false)}
+                  aria-label="Close"
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="p-2">
+                <button
+                  type="button"
+                  onClick={() => void createNewChatThread()}
+                  className="w-full rounded-xl border border-dashed border-zinc-300 bg-zinc-50 py-2.5 text-sm font-medium text-zinc-800 dark:border-zinc-600 dark:bg-zinc-950 dark:text-zinc-200"
+                >
+                  + New chat
+                </button>
+              </div>
+              <ul className="flex min-h-0 flex-1 flex-col space-y-1 overflow-y-auto p-2 pt-0">
+                {chatThreadsLoading ? (
+                  <li className="px-2 text-sm text-zinc-500">Loading…</li>
+                ) : chatThreads.length === 0 ? (
+                  <li className="px-2 py-6 text-center text-sm text-zinc-500 dark:text-zinc-400">
+                    <p>Ask Remembrain about your life</p>
+                    <button
+                      type="button"
+                      onClick={() => void createNewChatThread()}
+                      className="mt-3 w-full rounded-xl bg-zinc-900 py-2.5 text-sm font-medium text-white dark:bg-zinc-100 dark:text-zinc-900"
+                    >
+                      + New chat
+                    </button>
+                  </li>
+                ) : (
+                  chatThreads.map((thread) => (
+                    <li key={thread.id} className="group flex items-stretch gap-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActiveThreadId(thread.id);
+                          setChatSidebarOpen(false);
+                        }}
+                        className={`min-w-0 flex-1 rounded-xl px-3 py-2 text-left text-sm transition ${
+                          activeThreadId === thread.id
+                            ? "bg-zinc-200 dark:bg-zinc-800"
+                            : "hover:bg-zinc-100 dark:hover:bg-zinc-800/80"
+                        }`}
+                      >
+                        <div className="truncate font-medium text-zinc-900 dark:text-zinc-100">
+                          {thread.title?.trim() || "New chat"}
+                        </div>
+                        <div className="text-xs text-zinc-500 dark:text-zinc-400">
+                          {formatShortThreadDate(thread.updated_at)}
+                        </div>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleDeleteChatThread(thread.id)}
+                        className="shrink-0 rounded-lg p-2 text-zinc-400 opacity-100 transition hover:bg-zinc-200 hover:text-red-600 sm:opacity-0 sm:group-hover:opacity-100 dark:hover:bg-zinc-700"
+                        aria-label="Delete chat"
+                      >
+                        🗑️
+                      </button>
+                    </li>
+                  ))
+                )}
+              </ul>
+            </aside>
+
+            <section className="flex min-h-[min(60vh,520px)] min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+              {!isLoading && entries.length === 0 ? (
+                <p className="shrink-0 border-b border-zinc-200 px-4 py-3 text-center text-sm text-zinc-600 dark:border-zinc-800 dark:text-zinc-400">
+                  Add some entries first, then come back here to ask questions about your life
                 </p>
               ) : null}
-              {chatMessages.map((message, index) => (
-                <div
-                  key={`${message.role}-${index}`}
-                  className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
-                >
-                  <div
-                    className={`max-w-[min(100%,24rem)] whitespace-pre-wrap rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
-                      message.role === "user"
-                        ? "bg-blue-600 text-white dark:bg-blue-500"
-                        : "bg-zinc-200 text-zinc-900 dark:bg-zinc-700 dark:text-zinc-100"
-                    }`}
-                  >
-                    {message.content}
-                  </div>
-                </div>
-              ))}
-              {isAsking ? (
-                <div className="flex justify-start">
-                  <div className="rounded-2xl bg-zinc-200 px-4 py-2.5 text-sm italic text-zinc-600 dark:bg-zinc-700 dark:text-zinc-300">
-                    thinking...
-                  </div>
-                </div>
+              {chatError ? (
+                <p className="shrink-0 border-b border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-100">
+                  {chatError}
+                </p>
               ) : null}
-            </div>
-            <form
-              onSubmit={(event) => void handleAskSubmit(event)}
-              className="flex shrink-0 flex-col gap-2 border-t border-zinc-200 p-3 dark:border-zinc-800 sm:flex-row sm:items-end"
-            >
-              <textarea
-                ref={askTextareaRef}
-                rows={1}
-                value={askInput}
-                onChange={(event) => {
-                  setAskInput(event.target.value);
-                  requestAnimationFrame(adjustAskTextareaHeight);
-                }}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" && !event.shiftKey) {
-                    event.preventDefault();
-                    void handleAskSubmit();
-                  }
-                }}
-                placeholder={
-                  !isLoading && entries.length === 0
-                    ? "Add entries on the Entries tab first…"
-                    : "Ask a question…"
-                }
-                disabled={isAsking || isLoading || entries.length === 0}
-                className="max-h-40 min-h-11 w-full resize-none rounded-xl border border-zinc-300 bg-zinc-50 px-3 py-2.5 text-base outline-none transition focus:border-zinc-400 focus:ring-2 focus:ring-zinc-300 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-950 dark:focus:border-zinc-500 dark:focus:ring-zinc-700"
-              />
-              <button
-                type="submit"
-                disabled={isAsking || !askInput.trim() || isLoading || entries.length === 0}
-                className="shrink-0 rounded-xl bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300 sm:w-auto sm:self-stretch sm:px-6"
+              <div
+                ref={chatScrollRef}
+                className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-3 py-4 sm:px-4"
               >
-                Send
-              </button>
-            </form>
-          </section>
+                {threadMessagesLoading ? (
+                  <p className="py-6 text-center text-sm text-zinc-500">Loading messages…</p>
+                ) : null}
+                {!threadMessagesLoading &&
+                !activeThreadId &&
+                !chatThreadsLoading &&
+                chatThreads.length === 0 &&
+                entries.length > 0 ? (
+                  <div className="flex flex-col items-center gap-3 py-10 text-center">
+                    <p className="text-sm text-zinc-600 dark:text-zinc-400">
+                      Ask Remembrain about your life
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => void createNewChatThread()}
+                      className="rounded-xl bg-zinc-900 px-5 py-2.5 text-sm font-medium text-white dark:bg-zinc-100 dark:text-zinc-900"
+                    >
+                      + New chat
+                    </button>
+                  </div>
+                ) : null}
+                {activeThreadId &&
+                threadMessages.length === 0 &&
+                !isChatSending &&
+                !threadMessagesLoading &&
+                entries.length > 0 ? (
+                  <div className="space-y-2 py-4">
+                    <p className="text-center text-sm text-zinc-500 dark:text-zinc-400">Try asking:</p>
+                    <div className="flex flex-col gap-2 sm:items-center">
+                      {[
+                        "When is Dan Bi's birthday?",
+                        "What meds am I on?",
+                        "Tell me about my career",
+                      ].map((q) => (
+                        <button
+                          key={q}
+                          type="button"
+                          onClick={() => handleSuggestedQuestion(q)}
+                          className="w-full max-w-md rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2.5 text-left text-sm text-zinc-800 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-200"
+                        >
+                          {q}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+                {threadMessages.map((message, index) => (
+                  <div
+                    key={`${message.role}-${index}`}
+                    className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
+                  >
+                    <div
+                      className={`max-w-[min(100%,24rem)] whitespace-pre-wrap rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
+                        message.role === "user"
+                          ? "bg-blue-600 text-white dark:bg-blue-500"
+                          : "bg-zinc-200 text-zinc-900 dark:bg-zinc-700 dark:text-zinc-100"
+                      }`}
+                    >
+                      {message.content}
+                    </div>
+                  </div>
+                ))}
+                {isChatSending ? (
+                  <div className="flex justify-start">
+                    <div className="rounded-2xl bg-zinc-200 px-4 py-2.5 text-sm italic text-zinc-600 dark:bg-zinc-700 dark:text-zinc-300">
+                      Thinking…
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+              <form
+                onSubmit={(event) => void handleChatSubmit(event)}
+                className="flex shrink-0 flex-col gap-2 border-t border-zinc-200 p-3 dark:border-zinc-800 sm:flex-row sm:items-end"
+              >
+                <textarea
+                  ref={chatComposerRef}
+                  rows={1}
+                  value={chatInput}
+                  onChange={(event) => {
+                    setChatInput(event.target.value);
+                    if (chatError) {
+                      setChatError(null);
+                    }
+                    requestAnimationFrame(adjustChatComposerHeight);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && !event.shiftKey) {
+                      event.preventDefault();
+                      void handleChatSubmit();
+                    }
+                  }}
+                  placeholder={
+                    !isLoading && entries.length === 0
+                      ? "Add entries on the Entries tab first…"
+                      : "Ask a question…"
+                  }
+                  disabled={
+                    isChatSending || isLoading || entries.length === 0 || !activeThreadId
+                  }
+                  className="max-h-40 min-h-11 w-full resize-none rounded-xl border border-zinc-300 bg-zinc-50 px-3 py-2.5 text-base outline-none transition focus:border-zinc-400 focus:ring-2 focus:ring-zinc-300 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-950 dark:focus:border-zinc-500 dark:focus:ring-zinc-700"
+                />
+                <button
+                  type="submit"
+                  disabled={
+                    isChatSending ||
+                    !chatInput.trim() ||
+                    isLoading ||
+                    entries.length === 0 ||
+                    !activeThreadId
+                  }
+                  className="shrink-0 rounded-xl bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300 sm:w-auto sm:self-stretch sm:px-6"
+                >
+                  Send
+                </button>
+              </form>
+            </section>
+          </div>
         )}
       </main>
       {isExportModalOpen ? (
