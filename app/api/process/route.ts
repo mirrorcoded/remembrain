@@ -80,26 +80,56 @@ function thirdPersonInstructionBlock(
   pronounsLine: string,
   examplePossessive: string,
 ): string {
-  return `STEP 4 - Third person (apply to each entry's text after steps 1–3):
-After processing the entry (cleaning typos, splitting if multi-topic, categorizing), rewrite the text to use third person with the user's name and pronouns instead of first-person.
+  return `STEP 4 - Third person (apply to EACH entry after steps 1–3):
+After cleaning typos, splitting multi-topic input into separate entries (if applicable), and categorizing, rewrite EVERY resulting entry's text to third person using USER NAME and USER PRONOUNS below. For multi-topic splits, perform STEP 4 independently on each split entry—do not leave any entry in first person.
 
 USER NAME: ${userName}
 USER PRONOUNS: ${pronounsLine}
 
-Examples (using this user's name; adjust possessives and pronouns to match USER PRONOUNS):
-- 'My birthday is May 19' becomes '${examplePossessive} birthday is May 19'
-- 'I love Dan Bi' becomes '${userName} loves Dan Bi'
-- 'I am glad my wife is Dan Bi' becomes '${userName} is glad his wife is Dan Bi' (when using he/him) or the equivalent with the user's pronouns
-- 'Dan Bi and I went to dinner' becomes 'Dan Bi and ${userName} went to dinner' (or '${userName} and Dan Bi went to dinner') without duplicating the name if the user already used it in the entry
+PRONOUN REPLACEMENT - Be thorough. Replace ALL first-person references meant as the journal author (the user), including informal spellings and typos. Use USER NAME and the subject/object/possessive forms implied by USER PRONOUNS.
 
-Rules:
-- Replace I/me/my/mine and similar first-person with the user's name and appropriate pronouns from USER PRONOUNS
-- Adjust verb conjugation accordingly (I am → ${userName} is, I have → ${userName} has)
-- Do not change quoted speech or things other people said
-- If the user already uses their name in the entry (e.g. 'Eric and Dan Bi went to dinner'), do not repeat or double the name unnaturally
-- Preserve the user's voice in word choice and meaning—only shift perspective
-- Do not add information that was not in the original
-- If the text has no first-person language, keep it as-is (aside from light cleanup from step 1 if any)`;
+Subject pronouns and contractions (map to ${userName} + correct verb form; fix casing and apostrophes):
+- I → ${userName}
+- I'm, im, Im, I am → ${userName} is (or ${userName} was/were when tense requires)
+- I've, ive, I have → ${userName} has or ${userName} had (match tense)
+- I'll, ill, I will → ${userName} will or ${userName} would (match tense/modality)
+- I'd, id → ${userName} would, ${userName} had, or ${userName} should as context requires
+- Lowercase i as a subject pronoun → ${userName}
+
+Object pronouns (use object form from USER PRONOUNS, e.g. him/her/them):
+- me → him/her/them as appropriate
+- myself → himself/herself/themselves as appropriate
+
+Possessive and determiners:
+- my, mine → ${userName}'s or his/her/their per USER PRONOUNS and grammar (e.g. '${examplePossessive} birthday')
+- Catch informal spellings: myne, mi when clearly meaning "my/mine" → rewrite correctly
+
+Verb conjugation after replacing I with ${userName} (third person singular/plural as appropriate):
+- I am → ${userName} is (or was)
+- I have → ${userName} has (or had)
+- I do → ${userName} does (or did)
+- I think → ${userName} thinks (or thought)
+- I love → ${userName} loves (or loved)
+- im glad / I'm glad → ${userName} is glad (etc.)
+
+Multiple occurrences: If a sentence has several first-person forms (e.g. multiple "I" or "I'm"), replace ALL of them, not only the first.
+
+Informal & typo examples (adjust pronouns to USER PRONOUNS; names below illustrate pattern):
+- 'I'm glad I am 31 years old' → '${userName} is glad ${userName} is 31 years old'
+- 'im going to the store' → '${userName} is going to the store'
+- 'i love my wife and i think shes amazing' → '${userName} loves his wife and ${userName} thinks she's amazing' (or equivalent with her/their pronouns)
+- 'me and dan bi went hiking' → '${userName} and Dan Bi went hiking' or 'Dan Bi and ${userName} went hiking'
+- 'i was tired so i took a nap' → '${userName} was tired so ${userName} took a nap'
+- 'me too' in author voice → '${userName} too' or rephrase (e.g. '${userName} agrees') only if it preserves meaning
+- 'thats myne' → 'that's ${userName}'s' or equivalent possessive per USER PRONOUNS
+
+Guardrails:
+- Do not change words inside quotation marks if they represent someone else's speech.
+- Do not change first- or second-person when the writer is clearly quoting or describing another person's words.
+- Do not replace pronouns that refer to other people (e.g. "she" for the user's partner stays when it refers to that person, not the author).
+- If the user already wrote their own name in the entry, avoid doubling it awkwardly (e.g. '${userName} and Dan Bi' not '${userName} and ${userName} and Dan Bi').
+- Preserve meaning and tone; do not add facts that were not in the original.
+- If there is genuinely no first-person author reference left to rewrite, leave wording unchanged aside from step 1 cleanup.`;
 }
 
 function buildAutoSystemPrompt(
