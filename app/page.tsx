@@ -2293,7 +2293,7 @@ export default function Home() {
       <main
         className={`mx-auto flex w-full min-w-0 max-w-6xl touch-pan-y overflow-x-hidden px-4 sm:px-6 ${
           activeTab === "chat"
-            ? "min-h-0 flex-1 flex-col pb-[max(8px,env(safe-area-inset-bottom))] pt-2"
+            ? "min-h-0 flex-1 flex-col pb-[max(8px,env(safe-area-inset-bottom))] pt-0"
             : "flex-col pb-10 pt-4"
         }`}
       >
@@ -2317,7 +2317,21 @@ export default function Home() {
               </Link>
             </div>
           </header>
-        ) : null}
+        ) : (
+          <header className="mb-1 flex shrink-0 items-center justify-between gap-3 py-4 sm:mb-2 sm:py-5">
+            <h1 className="text-[22px] font-semibold leading-tight tracking-tight text-white sm:text-2xl">
+              Remembrain
+            </h1>
+            <Link
+              href="/settings"
+              className="rb-btn-press inline-flex h-9 min-h-9 min-w-9 shrink-0 items-center justify-center rounded-full border border-[#1f1f1f] bg-[#0a0a0a] text-[#6b6b6b] transition hover:border-[#2a2a2a] hover:bg-[#111111] hover:text-[#a3a3a3] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+              aria-label={t("common.settings")}
+              title={t("common.settings")}
+            >
+              <IconGear className="h-[18px] w-[18px]" />
+            </Link>
+          </header>
+        )}
 
         <div
           className={`sticky top-0 z-[60] shrink-0 -mx-4 max-w-[100vw] min-w-0 border-b border-[#1f1f1f] bg-black/95 backdrop-blur-md supports-[backdrop-filter]:bg-black/90 sm:-mx-6 sm:px-6 max-lg:transition-opacity ${
