@@ -2334,9 +2334,7 @@ export default function Home() {
                     type="submit"
                     disabled={!text.trim()}
                     aria-label={t("common.save")}
-                    className={`rb-btn-press absolute bottom-[14px] z-[1] inline-flex h-9 min-h-9 min-w-9 items-center justify-center rounded-full transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white ${
-                      isMounted && isSpeechSupported ? "left-[14px]" : "right-[14px]"
-                    } ${
+                    className={`rb-btn-press absolute bottom-[14px] right-[14px] z-[1] inline-flex h-9 min-h-9 min-w-9 items-center justify-center rounded-full transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white ${
                       text.trim()
                         ? "bg-white text-black hover:opacity-90"
                         : "border border-[#1f1f1f] bg-[#141414] text-[#525252] opacity-60"
@@ -2355,7 +2353,7 @@ export default function Home() {
                         }
                       }}
                       aria-label={isListening ? t("common.voiceStop") : t("common.voiceStart")}
-                      className={`rb-btn-press absolute bottom-[14px] right-[14px] z-[1] inline-flex h-9 min-h-9 min-w-9 items-center justify-center rounded-full text-[11px] font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                      className={`rb-btn-press absolute bottom-[14px] left-[14px] z-[1] inline-flex h-9 min-h-9 min-w-9 items-center justify-center rounded-full text-[11px] font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${
                         isListening
                           ? "animate-pulse bg-red-600 text-white hover:bg-red-500"
                           : "border border-[#1f1f1f] bg-[#1f1f1f] text-[#a3a3a3] hover:bg-[#2a2a2a]"
