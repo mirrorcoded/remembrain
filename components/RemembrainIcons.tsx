@@ -84,6 +84,27 @@ export function IconArrowUp(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+export function IconMic(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" width={20} height={20} fill="none" aria-hidden {...props}>
+      <path
+        d="M12 14a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v5a3 3 0 0 0 3 3Z"
+        stroke="currentColor"
+        strokeWidth={1.5}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M19 11a7 7 0 0 1-14 0M12 18v3M8 21h8"
+        stroke="currentColor"
+        strokeWidth={1.5}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 export function IconTrash(props: SVGProps<SVGSVGElement>) {
   return (
     <svg viewBox="0 0 24 24" width={18} height={18} fill="none" aria-hidden {...props}>

@@ -18,6 +18,7 @@ import {
   IconArrowUp,
   IconChatBubbleEmpty,
   IconGear,
+  IconMic,
   IconNotebookEmpty,
   IconPencil,
   IconSearchEmpty,
@@ -2361,15 +2362,12 @@ export default function Home() {
         >
         {activeTab === "entries" ? (
           <>
-            <form
-              onSubmit={handleSave}
-              className="rounded-2xl border border-[#1f1f1f] bg-[#0a0a0a] shadow-sm"
-            >
+            <form onSubmit={handleSave}>
               <div className="space-y-4 p-5 sm:p-6">
                 <label htmlFor="entry" className="rb-heading block text-white">
                   {t("common.newJournalEntry")}
                 </label>
-                <div className="relative">
+                <div className="rounded-2xl border border-[#1f1f1f] bg-[#0a0a0a] p-3 shadow-sm transition-colors focus-within:border-white sm:p-4">
                   <textarea
                     id="entry"
                     value={text}
@@ -2380,44 +2378,42 @@ export default function Home() {
                     autoCorrect="off"
                     autoCapitalize="sentences"
                     spellCheck
-                    className={`textarea-empty-inner max-h-[min(40vh,280px)] min-h-[8rem] min-w-0 w-full resize-none overflow-y-auto break-words rounded-xl border border-[#1f1f1f] bg-[#0a0a0a] py-[14px] pb-12 text-base leading-relaxed text-white outline-none transition focus:border-white focus:ring-0 ${
-                      isMounted && isSpeechSupported
-                        ? "pl-14 pr-14 pt-[14px]"
-                        : "px-[14px] pr-14 pt-[14px]"
-                    }`}
+                    className="textarea-empty-inner max-h-[min(40vh,280px)] min-h-[8rem] min-w-0 w-full resize-none overflow-y-auto break-words border-0 bg-transparent px-0 py-1 text-base leading-relaxed text-white outline-none ring-0 transition focus:border-transparent focus:ring-0"
                   />
-                  <button
-                    type="submit"
-                    disabled={!text.trim()}
-                    aria-label={t("common.save")}
-                    className={`rb-btn-press absolute bottom-[14px] right-[14px] z-[1] inline-flex h-9 min-h-9 min-w-9 items-center justify-center rounded-full transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white ${
-                      text.trim()
-                        ? "bg-white text-black hover:opacity-90"
-                        : "border border-[#1f1f1f] bg-[#141414] text-[#525252] opacity-60"
-                    }`}
-                  >
-                    <IconArrowUp className="h-[18px] w-[18px] shrink-0" />
-                  </button>
-                  {isMounted && isSpeechSupported ? (
+                  <div className="mt-3 flex items-center justify-end gap-2.5">
+                    {isMounted && isSpeechSupported ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (isListening) {
+                            stopListening();
+                          } else {
+                            startListening("entry");
+                          }
+                        }}
+                        aria-label={isListening ? t("common.voiceStop") : t("common.voiceStart")}
+                        className={`rb-btn-press inline-flex h-10 min-h-10 min-w-10 shrink-0 items-center justify-center rounded-full transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white ${
+                          isListening && activeTab === "entries"
+                            ? "animate-pulse bg-red-600 text-white hover:bg-red-500"
+                            : "border border-[#1f1f1f] bg-[#1f1f1f] text-[#a3a3a3] hover:bg-[#2a2a2a]"
+                        }`}
+                      >
+                        <IconMic className="h-5 w-5 shrink-0" />
+                      </button>
+                    ) : null}
                     <button
-                      type="button"
-                      onClick={() => {
-                        if (isListening) {
-                          stopListening();
-                        } else {
-                          startListening("entry");
-                        }
-                      }}
-                      aria-label={isListening ? t("common.voiceStop") : t("common.voiceStart")}
-                      className={`rb-btn-press absolute bottom-[14px] left-[14px] z-[1] inline-flex h-9 min-h-9 min-w-9 items-center justify-center rounded-full text-[11px] font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${
-                        isListening && activeTab === "entries"
-                          ? "animate-pulse bg-red-600 text-white hover:bg-red-500"
-                          : "border border-[#1f1f1f] bg-[#1f1f1f] text-[#a3a3a3] hover:bg-[#2a2a2a]"
+                      type="submit"
+                      disabled={!text.trim()}
+                      aria-label={t("common.save")}
+                      className={`rb-btn-press inline-flex h-10 min-h-10 min-w-10 shrink-0 items-center justify-center rounded-full transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white ${
+                        text.trim()
+                          ? "bg-white text-black hover:opacity-90"
+                          : "border border-[#1f1f1f] bg-[#141414] text-[#525252] opacity-60"
                       }`}
                     >
-                      {isListening && activeTab === "entries" ? t("common.listening") : t("common.mic")}
+                      <IconArrowUp className="h-[18px] w-[18px] shrink-0" />
                     </button>
-                  ) : null}
+                  </div>
                 </div>
                 {speechErrorMessage ? (
                   <p className="text-sm text-red-400">{speechErrorMessage}</p>
@@ -3262,9 +3258,9 @@ export default function Home() {
               </div>
               <form
                 onSubmit={(event) => void handleChatSubmit(event)}
-                className="shrink-0 border-t border-[#1f1f1f] bg-[#0a0a0a] p-2 pb-[max(12px,env(safe-area-inset-bottom))] sm:p-3"
+                className="shrink-0 border-t border-[#1f1f1f] bg-[#0a0a0a] px-2 pb-[max(12px,env(safe-area-inset-bottom))] pt-2 sm:px-3 sm:pt-3"
               >
-                <div className="relative">
+                <div className="rounded-xl border border-[#1f1f1f] bg-[#0a0a0a] p-3 transition-colors focus-within:border-white sm:p-4">
                   <textarea
                     ref={chatComposerRef}
                     rows={1}
@@ -3288,64 +3284,62 @@ export default function Home() {
                         : t("common.askPlaceholder")
                     }
                     disabled={isLoading || entries.length === 0 || !activeThreadId}
-                    className={`textarea-empty-inner max-h-40 min-h-11 min-w-0 w-full resize-none break-words rounded-xl border border-[#1f1f1f] bg-[#0a0a0a] pb-12 pt-[14px] text-base text-white outline-none transition focus:border-white focus:ring-0 disabled:cursor-not-allowed disabled:opacity-50 ${
-                      isMounted && isSpeechSupported
-                        ? "pl-14 pr-14"
-                        : "pl-[14px] pr-14"
-                    }`}
+                    className="textarea-empty-inner max-h-40 min-h-11 min-w-0 w-full resize-none break-words border-0 bg-transparent px-0 py-1 text-base text-white outline-none ring-0 transition focus:ring-0 disabled:cursor-not-allowed disabled:opacity-50"
                   />
-                  <button
-                    type="submit"
-                    disabled={
-                      isChatSending ||
-                      !chatInput.trim() ||
-                      isLoading ||
-                      entries.length === 0 ||
-                      !activeThreadId
-                    }
-                    aria-label={t("common.send")}
-                    aria-busy={isChatSending}
-                    className={`rb-btn-press absolute bottom-[14px] right-[14px] z-[1] inline-flex h-9 min-h-9 min-w-9 items-center justify-center rounded-full transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white disabled:cursor-not-allowed ${
-                      isChatSending
-                        ? "!opacity-100 bg-white text-black"
-                        : chatInput.trim() &&
-                            !isLoading &&
-                            entries.length > 0 &&
-                            activeThreadId
-                          ? "bg-white text-black hover:opacity-90"
-                          : "border border-[#1f1f1f] bg-[#141414] text-[#525252] opacity-60"
-                    }`}
-                  >
-                    {isChatSending ? (
-                      <span
-                        className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-black border-t-transparent"
-                        aria-hidden
-                      />
-                    ) : (
-                      <IconArrowUp className="h-[18px] w-[18px] shrink-0" />
-                    )}
-                  </button>
-                  {isMounted && isSpeechSupported ? (
+                  <div className="mt-3 flex items-center justify-end gap-2.5">
+                    {isMounted && isSpeechSupported ? (
+                      <button
+                        type="button"
+                        disabled={isLoading || entries.length === 0 || !activeThreadId}
+                        onClick={() => {
+                          if (isListening) {
+                            stopListening();
+                          } else {
+                            startListening("chat");
+                          }
+                        }}
+                        aria-label={isListening ? t("common.voiceStop") : t("common.voiceStart")}
+                        className={`rb-btn-press inline-flex h-10 min-h-10 min-w-10 shrink-0 items-center justify-center rounded-full transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white disabled:cursor-not-allowed disabled:opacity-50 ${
+                          isListening && activeTab === "chat"
+                            ? "animate-pulse bg-red-600 text-white hover:bg-red-500"
+                            : "border border-[#1f1f1f] bg-[#1f1f1f] text-[#a3a3a3] hover:bg-[#2a2a2a]"
+                        }`}
+                      >
+                        <IconMic className="h-5 w-5 shrink-0" />
+                      </button>
+                    ) : null}
                     <button
-                      type="button"
-                      disabled={isLoading || entries.length === 0 || !activeThreadId}
-                      onClick={() => {
-                        if (isListening) {
-                          stopListening();
-                        } else {
-                          startListening("chat");
-                        }
-                      }}
-                      aria-label={isListening ? t("common.voiceStop") : t("common.voiceStart")}
-                      className={`rb-btn-press absolute bottom-[14px] left-[14px] z-[1] inline-flex h-9 min-h-9 min-w-9 items-center justify-center rounded-full text-[11px] font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${
-                        isListening && activeTab === "chat"
-                          ? "animate-pulse bg-red-600 text-white hover:bg-red-500"
-                          : "border border-[#1f1f1f] bg-[#1f1f1f] text-[#a3a3a3] hover:bg-[#2a2a2a]"
+                      type="submit"
+                      disabled={
+                        isChatSending ||
+                        !chatInput.trim() ||
+                        isLoading ||
+                        entries.length === 0 ||
+                        !activeThreadId
+                      }
+                      aria-label={t("common.send")}
+                      aria-busy={isChatSending}
+                      className={`rb-btn-press inline-flex h-10 min-h-10 min-w-10 shrink-0 items-center justify-center rounded-full transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white disabled:cursor-not-allowed ${
+                        isChatSending
+                          ? "!opacity-100 bg-white text-black"
+                          : chatInput.trim() &&
+                              !isLoading &&
+                              entries.length > 0 &&
+                              activeThreadId
+                            ? "bg-white text-black hover:opacity-90"
+                            : "border border-[#1f1f1f] bg-[#141414] text-[#525252] opacity-60"
                       }`}
                     >
-                      {isListening && activeTab === "chat" ? t("common.listening") : t("common.mic")}
+                      {isChatSending ? (
+                        <span
+                          className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-black border-t-transparent"
+                          aria-hidden
+                        />
+                      ) : (
+                        <IconArrowUp className="h-[18px] w-[18px] shrink-0" />
+                      )}
                     </button>
-                  ) : null}
+                  </div>
                 </div>
                 {speechErrorMessage ? (
                   <p className="mt-1.5 text-sm text-red-400">{speechErrorMessage}</p>
