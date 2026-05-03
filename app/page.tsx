@@ -15,6 +15,7 @@ import Link from "next/link";
 import { CategoryBadge, CategoryFilterChip } from "@/components/CategoryBadge";
 import { useI18n } from "@/components/I18nProvider";
 import {
+  IconArrowUp,
   IconChatBubbleEmpty,
   IconGear,
   IconNotebookEmpty,
@@ -39,10 +40,7 @@ import {
   intlLocaleForUi,
   speechRecognitionLang,
 } from "@/lib/i18n";
-import {
-  readDefaultCategoryPreference,
-  readStatsExpandedPreference,
-} from "@/lib/remembrain-preferences";
+import { readStatsExpandedPreference } from "@/lib/remembrain-preferences";
 import { supabase } from "@/lib/supabase";
 import { greetingLineForUser } from "@/lib/user-profile";
 
@@ -83,7 +81,6 @@ type SpeechRecognitionLike = {
 type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
 type ExportFormat = "markdown" | "text" | "json";
 type ExportScope = "all" | "filtered" | "date-range";
-type NewEntryCategorySelection = "auto" | KnownCategory;
 type ProcessApiEntry = { text?: string; category?: string; tags?: unknown };
 type ChatMessage = { role: "user" | "assistant"; content: string };
 
@@ -246,8 +243,6 @@ export default function Home() {
   );
 
   const [text, setText] = useState("");
-  const [newEntryCategorySelection, setNewEntryCategorySelection] =
-    useState<NewEntryCategorySelection>("auto");
   const [entries, setEntries] = useState<Entry[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState<"all" | KnownCategory>("all");
@@ -662,9 +657,6 @@ export default function Home() {
     const timeoutId = setTimeout(() => {
       try {
         setStatsExpanded(readStatsExpandedPreference());
-        setNewEntryCategorySelection(
-          readDefaultCategoryPreference() as NewEntryCategorySelection,
-        );
       } catch {
         // ignore private mode / quota
       }
@@ -679,9 +671,6 @@ export default function Home() {
     const timeoutId = setTimeout(() => {
       try {
         setStatsExpanded(readStatsExpandedPreference());
-        setNewEntryCategorySelection(
-          readDefaultCategoryPreference() as NewEntryCategorySelection,
-        );
       } catch {
         // ignore
       }
@@ -1686,12 +1675,8 @@ export default function Home() {
       return;
     }
 
-    const useAutoCategory = newEntryCategorySelection === "auto";
-    const manualCategorySnapshot = newEntryCategorySelection;
     const tempId = allocateOptimisticEntryId();
-    const optimisticCategorySlug: string = useAutoCategory
-      ? "other"
-      : manualCategorySnapshot;
+    const optimisticCategorySlug = "other";
 
     setErrorMessage(null);
     setSaveRetryDraft(null);
@@ -1707,7 +1692,6 @@ export default function Home() {
     };
     setEntries((prev) => [optimisticEntry, ...prev]);
     setText("");
-    setNewEntryCategorySelection("auto");
 
     void (async () => {
       let processedEntries: Array<{ text: string; category: KnownCategory; tags: string[] }> = [
@@ -1723,7 +1707,7 @@ export default function Home() {
           },
           body: JSON.stringify({
             text: trimmedText,
-            manualCategory: manualCategorySnapshot,
+            manualCategory: "auto",
           }),
         });
 
@@ -1780,11 +1764,6 @@ export default function Home() {
         }
       } catch (err) {
         console.error("[entries save] /api/process request failed — inserting fallback rows:", err);
-        if (manualCategorySnapshot !== "auto") {
-          processedEntries = [
-            { text: trimmedText, category: manualCategorySnapshot, tags: [] },
-          ];
-        }
       }
 
       const insertedRows: Entry[] = [];
@@ -2328,9 +2307,9 @@ export default function Home() {
           <>
             <form
               onSubmit={handleSave}
-              className="flex max-h-[min(92dvh,900px)] flex-col overflow-hidden rounded-2xl border border-[#1f1f1f] bg-[#0a0a0a] shadow-sm"
+              className="rounded-2xl border border-[#1f1f1f] bg-[#0a0a0a] shadow-sm"
             >
-              <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5 sm:p-6">
+              <div className="space-y-4 p-5 sm:p-6">
                 <label htmlFor="entry" className="rb-heading block text-white">
                   {t("common.newJournalEntry")}
                 </label>
@@ -2345,8 +2324,26 @@ export default function Home() {
                     autoCorrect="off"
                     autoCapitalize="sentences"
                     spellCheck
-                    className="textarea-empty-inner max-h-[min(40vh,280px)] min-h-[8rem] min-w-0 w-full resize-none overflow-y-auto break-words rounded-xl border border-[#1f1f1f] bg-[#0a0a0a] px-[14px] py-[14px] pr-16 text-base leading-relaxed text-white outline-none transition focus:border-white focus:ring-0"
+                    className={`textarea-empty-inner max-h-[min(40vh,280px)] min-h-[8rem] min-w-0 w-full resize-none overflow-y-auto break-words rounded-xl border border-[#1f1f1f] bg-[#0a0a0a] py-[14px] pb-12 text-base leading-relaxed text-white outline-none transition focus:border-white focus:ring-0 ${
+                      isMounted && isSpeechSupported
+                        ? "pl-14 pr-14 pt-[14px]"
+                        : "px-[14px] pr-14 pt-[14px]"
+                    }`}
                   />
+                  <button
+                    type="submit"
+                    disabled={!text.trim()}
+                    aria-label={t("common.save")}
+                    className={`rb-btn-press absolute bottom-[14px] z-[1] inline-flex h-9 min-h-9 min-w-9 items-center justify-center rounded-full transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white ${
+                      isMounted && isSpeechSupported ? "left-[14px]" : "right-[14px]"
+                    } ${
+                      text.trim()
+                        ? "bg-white text-black hover:opacity-90"
+                        : "border border-[#1f1f1f] bg-[#141414] text-[#525252] opacity-60"
+                    }`}
+                  >
+                    <IconArrowUp className="h-[18px] w-[18px] shrink-0" />
+                  </button>
                   {isMounted && isSpeechSupported ? (
                     <button
                       type="button"
@@ -2358,7 +2355,7 @@ export default function Home() {
                         }
                       }}
                       aria-label={isListening ? t("common.voiceStop") : t("common.voiceStart")}
-                      className={`rb-btn-press absolute bottom-[14px] right-[14px] inline-flex h-8 min-h-8 min-w-8 items-center justify-center rounded-full px-2 text-[11px] font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                      className={`rb-btn-press absolute bottom-[14px] right-[14px] z-[1] inline-flex h-9 min-h-9 min-w-9 items-center justify-center rounded-full text-[11px] font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${
                         isListening
                           ? "animate-pulse bg-red-600 text-white hover:bg-red-500"
                           : "border border-[#1f1f1f] bg-[#1f1f1f] text-[#a3a3a3] hover:bg-[#2a2a2a]"
@@ -2371,41 +2368,6 @@ export default function Home() {
                 {speechErrorMessage ? (
                   <p className="text-sm text-red-400">{speechErrorMessage}</p>
                 ) : null}
-                <div className="space-y-2 border-t border-[#1f1f1f] pt-6">
-                  <p className="rb-micro-label text-[#6b6b6b]">{t("common.category")}</p>
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setNewEntryCategorySelection("auto")}
-                      className={`rb-btn-press rounded-full px-2.5 py-[5px] text-[11px] font-medium transition ${
-                        newEntryCategorySelection === "auto"
-                          ? "bg-white text-black"
-                          : "border border-[#1f1f1f] bg-[#0a0a0a] text-white hover:bg-[#111111]"
-                      }`}
-                    >
-                      {t("common.auto")}
-                    </button>
-                    {ALL_CATEGORIES.map((category) => (
-                      <CategoryFilterChip
-                        key={category}
-                        category={category}
-                        label={categoryLabelForLocale(category, locale)}
-                        selected={newEntryCategorySelection === category}
-                        onClick={() => setNewEntryCategorySelection(category)}
-                      />
-                    ))}
-                  </div>
-                </div>
-              </div>
-              <div className="sticky bottom-0 z-10 shrink-0 border-t border-[#1f1f1f] bg-[#0a0a0a] px-5 pb-[max(12px,env(safe-area-inset-bottom))] pt-4 sm:px-6">
-                <button
-                  type="submit"
-                  className="rb-btn-press w-full min-h-12 scroll-mt-4 rounded-xl bg-white px-4 py-3 text-[15px] font-semibold text-black transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-                  disabled={!text.trim()}
-                  aria-live="polite"
-                >
-                  {t("common.save")}
-                </button>
               </div>
             </form>
 
