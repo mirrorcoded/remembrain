@@ -2287,13 +2287,15 @@ export default function Home() {
   return (
     <div
       className={`max-w-full overflow-x-hidden bg-black text-white ${
-        activeTab === "chat" ? "flex min-h-[100dvh] flex-col" : "min-h-screen"
+        activeTab === "chat"
+          ? "flex h-[100dvh] max-h-[100dvh] min-h-0 flex-col overflow-hidden"
+          : "min-h-screen"
       }`}
     >
       <main
         className={`mx-auto flex w-full min-w-0 max-w-6xl touch-pan-y overflow-x-hidden px-4 sm:px-6 ${
           activeTab === "chat"
-            ? "min-h-0 flex-1 flex-col pb-[max(8px,env(safe-area-inset-bottom))] pt-0"
+            ? "min-h-0 flex-1 flex-col overflow-hidden pb-[max(8px,env(safe-area-inset-bottom))] pt-0"
             : "flex-col pb-10 pt-4"
         }`}
       >
@@ -2993,7 +2995,7 @@ export default function Home() {
         </section>
           </>
         ) : (
-          <div className="flex min-h-0 w-full min-w-0 max-w-full flex-1 touch-pan-y flex-col gap-2 overflow-x-hidden lg:flex-row lg:items-stretch lg:gap-3">
+          <div className="flex min-h-0 w-full min-w-0 max-w-full flex-1 touch-pan-y flex-col gap-2 overflow-x-hidden overflow-y-hidden lg:flex-row lg:items-stretch lg:gap-3">
             {/* Right-edge dim strip (~22%): tap to close; tabs/chat peek through underneath */}
             {chatSidebarOpen ? (
               <button
@@ -3155,7 +3157,7 @@ export default function Home() {
               ) : null}
               <div
                 ref={chatScrollRef}
-                className="relative flex min-h-0 min-w-0 max-w-full touch-pan-y flex-1 flex-col gap-3 overflow-x-hidden overflow-y-auto px-3 py-4 sm:px-4"
+                className="relative flex min-h-0 min-w-0 max-w-full flex-1 basis-0 touch-pan-y flex-col gap-3 overflow-x-hidden overflow-y-auto overscroll-y-contain px-3 py-4 [-webkit-overflow-scrolling:touch] sm:px-4"
               >
                 {threadMessagesLoading ? (
                   <p className="py-6 text-center text-sm text-[#6b6b6b]">{t("common.loadingMessages")}</p>
