@@ -2376,12 +2376,15 @@ export default function Home() {
         >
         {activeTab === "entries" ? (
           <>
-            <form onSubmit={handleSave}>
-              <div className="space-y-4 p-5 sm:p-6">
+            <form
+              onSubmit={handleSave}
+              className="rounded-2xl border border-[#1f1f1f] bg-[#0a0a0a] p-5 shadow-sm transition-colors focus-within:border-white sm:p-6"
+            >
+              <div className="space-y-4">
                 <label htmlFor="entry" className="rb-heading block text-white">
                   {t("common.newJournalEntry")}
                 </label>
-                <div className="rounded-2xl border border-[#1f1f1f] bg-[#0a0a0a] p-3 shadow-sm transition-colors focus-within:border-white sm:p-4">
+                <div>
                   <textarea
                     id="entry"
                     value={text}
