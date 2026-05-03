@@ -243,6 +243,7 @@ export default function Home() {
   );
 
   const [text, setText] = useState("");
+  const textRef = useRef(text);
   const [entries, setEntries] = useState<Entry[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState<"all" | KnownCategory>("all");
@@ -280,6 +281,7 @@ export default function Home() {
   const [threadMessagesLoading, setThreadMessagesLoading] = useState(false);
   const [chatSidebarOpen, setChatSidebarOpen] = useState(false);
   const [chatInput, setChatInput] = useState("");
+  const chatInputRef = useRef(chatInput);
   const [isChatSending, setIsChatSending] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
   const [suggestedChatQuestions, setSuggestedChatQuestions] = useState<string[]>([]);
@@ -308,6 +310,7 @@ export default function Home() {
   const finalTranscriptRef = useRef("");
   /** When true, recognition `onend` skips committing transcript (e.g. save stopped the mic). */
   const speechDiscardCommitRef = useRef(false);
+  const speechTargetRef = useRef<"entry" | "chat">("entry");
   const chatScrollRef = useRef<HTMLDivElement | null>(null);
   const chatStreamAbortRef = useRef<AbortController | null>(null);
   const suggestedQuestionsAbortRef = useRef<AbortController | null>(null);
@@ -663,6 +666,14 @@ export default function Home() {
     }, 0);
     return () => clearTimeout(timeoutId);
   }, [isMounted]);
+
+  useEffect(() => {
+    textRef.current = text;
+  }, [text]);
+
+  useEffect(() => {
+    chatInputRef.current = chatInput;
+  }, [chatInput]);
 
   useEffect(() => {
     if (activeTab !== "entries" || !isMounted) {
@@ -1119,6 +1130,8 @@ export default function Home() {
     if (!trimmed || isChatSending || entries.length === 0 || !activeThreadId) {
       return;
     }
+
+    stopListening({ discardPendingCommit: true });
 
     suggestedQuestionsAbortRef.current?.abort();
     setSuggestionsFetchPending(false);
@@ -1596,13 +1609,14 @@ export default function Home() {
     return `${base}${base.endsWith(" ") || transcript.startsWith(" ") ? "" : " "}${transcript}`;
   }
 
-  function startListening() {
+  function startListening(target: "entry" | "chat") {
     if (!speechRecognitionCtor || isListening) {
       return;
     }
 
+    speechTargetRef.current = target;
     setSpeechErrorMessage(null);
-    speechBaseTextRef.current = text;
+    speechBaseTextRef.current = target === "chat" ? chatInputRef.current : textRef.current;
     finalTranscriptRef.current = "";
 
     const recognition = new speechRecognitionCtor();
@@ -1625,9 +1639,16 @@ export default function Home() {
       }
 
       finalTranscriptRef.current = finalTranscript;
-      setText(
-        composeSpeechText(speechBaseTextRef.current, `${finalTranscript}${interimTranscript}`),
+      const merged = composeSpeechText(
+        speechBaseTextRef.current,
+        `${finalTranscript}${interimTranscript}`,
       );
+      if (speechTargetRef.current === "chat") {
+        setChatInput(merged);
+        requestAnimationFrame(adjustChatComposerHeight);
+      } else {
+        setText(merged);
+      }
     };
 
     recognition.onerror = (event) => {
@@ -1643,7 +1664,16 @@ export default function Home() {
       const discard = speechDiscardCommitRef.current;
       speechDiscardCommitRef.current = false;
       if (!discard) {
-        setText(composeSpeechText(speechBaseTextRef.current, finalTranscriptRef.current));
+        const merged = composeSpeechText(
+          speechBaseTextRef.current,
+          finalTranscriptRef.current,
+        );
+        if (speechTargetRef.current === "chat") {
+          setChatInput(merged);
+          requestAnimationFrame(adjustChatComposerHeight);
+        } else {
+          setText(merged);
+        }
       }
       recognitionRef.current = null;
       setIsListening(false);
@@ -1666,6 +1696,11 @@ export default function Home() {
     recognitionRef.current.stop();
     setIsListening(false);
   }
+
+  useEffect(() => {
+    stopListening({ discardPendingCommit: true });
+    setSpeechErrorMessage(null);
+  }, [activeTab]);
 
   async function handleSave(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -2249,38 +2284,54 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen max-w-full overflow-x-hidden bg-black text-white">
-      <main className="mx-auto flex w-full min-w-0 max-w-6xl touch-pan-y flex-col overflow-x-hidden px-4 pb-10 pt-4 sm:px-6">
-        <header className="mb-8 flex flex-wrap items-start justify-between gap-4 sm:mb-8">
-          <div className="space-y-2">
-            <h1 className="rb-display text-white">Remembrain</h1>
-            <p className="text-[13px] font-normal text-[#a3a3a3]">{greetingLine}</p>
-            <p className="text-[15px] leading-relaxed text-[#a3a3a3]">
-              {t("common.captureSubtitle")}
-            </p>
-          </div>
-          <div className="flex shrink-0 flex-wrap items-center gap-2">
-            <Link
-              href="/settings"
-              className="rb-btn-press inline-flex h-10 min-w-10 items-center justify-center rounded-full border border-[#1f1f1f] bg-[#0a0a0a] px-3 text-white transition hover:bg-[#111111] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
-              aria-label={t("common.settings")}
-              title={t("common.settings")}
-            >
-              <IconGear className="text-[#a3a3a3]" />
-            </Link>
-          </div>
-        </header>
+    <div
+      className={`max-w-full overflow-x-hidden bg-black text-white ${
+        activeTab === "chat" ? "flex min-h-[100dvh] flex-col" : "min-h-screen"
+      }`}
+    >
+      <main
+        className={`mx-auto flex w-full min-w-0 max-w-6xl touch-pan-y overflow-x-hidden px-4 sm:px-6 ${
+          activeTab === "chat"
+            ? "min-h-0 flex-1 flex-col pb-[max(8px,env(safe-area-inset-bottom))] pt-2"
+            : "flex-col pb-10 pt-4"
+        }`}
+      >
+        {activeTab === "entries" ? (
+          <header className="mb-6 flex flex-wrap items-start justify-between gap-4 sm:mb-8">
+            <div className="space-y-2">
+              <h1 className="rb-display text-white">Remembrain</h1>
+              <p className="text-[13px] font-normal text-[#a3a3a3]">{greetingLine}</p>
+              <p className="text-[15px] leading-relaxed text-[#a3a3a3]">
+                {t("common.captureSubtitle")}
+              </p>
+            </div>
+            <div className="flex shrink-0 flex-wrap items-center gap-2">
+              <Link
+                href="/settings"
+                className="rb-btn-press inline-flex h-10 min-w-10 items-center justify-center rounded-full border border-[#1f1f1f] bg-[#0a0a0a] px-3 text-white transition hover:bg-[#111111] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+                aria-label={t("common.settings")}
+                title={t("common.settings")}
+              >
+                <IconGear className="text-[#a3a3a3]" />
+              </Link>
+            </div>
+          </header>
+        ) : null}
 
         <div
-          className={`sticky top-0 z-[60] -mx-4 mb-8 max-w-[100vw] min-w-0 border-b border-[#1f1f1f] bg-black/95 pb-3 pt-2 backdrop-blur-md supports-[backdrop-filter]:bg-black/90 sm:-mx-6 sm:mb-8 sm:px-6 sm:pb-4 sm:pt-3 max-lg:transition-opacity ${
+          className={`sticky top-0 z-[60] shrink-0 -mx-4 max-w-[100vw] min-w-0 border-b border-[#1f1f1f] bg-black/95 backdrop-blur-md supports-[backdrop-filter]:bg-black/90 sm:-mx-6 sm:px-6 max-lg:transition-opacity ${
+            activeTab === "chat"
+              ? "mb-2 pb-2 pt-1.5 sm:mb-2 sm:pb-2 sm:pt-2"
+              : "mb-6 pb-3 pt-2 sm:mb-8 sm:pb-4 sm:pt-3"
+          } ${
             activeTab === "chat" && chatSidebarOpen && isMobileViewport ? "max-lg:hidden" : ""
           }`}
         >
-          <div className="grid min-w-0 w-full grid-cols-2 gap-3 px-4 sm:gap-3 sm:px-0">
+          <div className="grid min-w-0 w-full grid-cols-2 gap-2 px-4 sm:gap-2.5 sm:px-0">
             <button
               type="button"
               onClick={() => handleTabChange("entries")}
-              className={`rb-btn-press min-h-[3rem] rounded-xl px-3 py-3 text-center text-[15px] font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white sm:min-h-[3.25rem] sm:px-5 sm:text-[15px] ${
+              className={`rb-btn-press min-h-9 rounded-xl px-3 py-2 text-center text-[13px] font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white sm:min-h-10 sm:px-4 sm:text-[13px] ${
                 activeTab === "entries"
                   ? "bg-white text-black shadow-[0_1px_12px_rgba(255,255,255,0.08)]"
                   : "border border-[#1f1f1f] bg-[#0a0a0a] text-white hover:bg-[#111111]"
@@ -2291,7 +2342,7 @@ export default function Home() {
             <button
               type="button"
               onClick={() => handleTabChange("chat")}
-              className={`rb-btn-press min-h-[3rem] rounded-xl px-3 py-3 text-center text-[15px] font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white sm:min-h-[3.25rem] sm:px-5 sm:text-[15px] ${
+              className={`rb-btn-press min-h-9 rounded-xl px-3 py-2 text-center text-[13px] font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white sm:min-h-10 sm:px-4 sm:text-[13px] ${
                 activeTab === "chat"
                   ? "bg-white text-black shadow-[0_1px_12px_rgba(255,255,255,0.08)]"
                   : "border border-[#1f1f1f] bg-[#0a0a0a] text-white hover:bg-[#111111]"
@@ -2302,7 +2353,12 @@ export default function Home() {
           </div>
         </div>
 
-        <div key={activeTab} className="rb-tab-pane flex min-w-0 max-w-full flex-col gap-8">
+        <div
+          key={activeTab}
+          className={`rb-tab-pane flex min-w-0 max-w-full flex-col ${
+            activeTab === "chat" ? "min-h-0 flex-1 gap-2 overflow-hidden" : "gap-8"
+          }`}
+        >
         {activeTab === "entries" ? (
           <>
             <form
@@ -2349,17 +2405,17 @@ export default function Home() {
                         if (isListening) {
                           stopListening();
                         } else {
-                          startListening();
+                          startListening("entry");
                         }
                       }}
                       aria-label={isListening ? t("common.voiceStop") : t("common.voiceStart")}
                       className={`rb-btn-press absolute bottom-[14px] left-[14px] z-[1] inline-flex h-9 min-h-9 min-w-9 items-center justify-center rounded-full text-[11px] font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${
-                        isListening
+                        isListening && activeTab === "entries"
                           ? "animate-pulse bg-red-600 text-white hover:bg-red-500"
                           : "border border-[#1f1f1f] bg-[#1f1f1f] text-[#a3a3a3] hover:bg-[#2a2a2a]"
                       }`}
                     >
-                      {isListening ? t("common.listening") : t("common.mic")}
+                      {isListening && activeTab === "entries" ? t("common.listening") : t("common.mic")}
                     </button>
                   ) : null}
                 </div>
@@ -2924,7 +2980,7 @@ export default function Home() {
         </section>
           </>
         ) : (
-          <div className="flex w-full min-w-0 max-w-full touch-pan-y flex-col gap-3 overflow-x-hidden lg:min-h-[min(80vh,800px)] lg:flex-row lg:items-stretch lg:gap-4">
+          <div className="flex min-h-0 w-full min-w-0 max-w-full flex-1 touch-pan-y flex-col gap-2 overflow-x-hidden lg:flex-row lg:items-stretch lg:gap-3">
             {/* Right-edge dim strip (~22%): tap to close; tabs/chat peek through underneath */}
             {chatSidebarOpen ? (
               <button
@@ -2935,18 +2991,18 @@ export default function Home() {
               />
             ) : null}
 
-            <div className="relative z-[55] flex items-center gap-2 lg:z-auto lg:hidden">
+            <div className="relative z-[55] flex shrink-0 items-center gap-2 lg:z-auto lg:hidden">
               <button
                 type="button"
                 onClick={() => setChatSidebarOpen(true)}
-                className="min-h-11 flex-1 rounded-xl border border-[#1f1f1f] bg-[#0a0a0a] px-3 text-sm font-medium text-white"
+                className="min-h-9 flex-1 rounded-lg border border-[#1f1f1f] bg-[#0a0a0a] px-2.5 py-1.5 text-xs font-medium text-white"
               >
                 {t("common.chats")}
               </button>
               <button
                 type="button"
                 onClick={() => void createNewChatThread()}
-                className="min-h-11 flex-1 rounded-xl bg-white px-3 text-sm font-medium text-black"
+                className="min-h-9 flex-1 rounded-lg bg-white px-2.5 py-1.5 text-xs font-medium text-black"
               >
                 {t("common.newChat")}
               </button>
@@ -2997,16 +3053,16 @@ export default function Home() {
                   </button>
                 </div>
 
-                <div className="hidden items-center justify-between border-b border-[#1f1f1f] p-3 lg:flex lg:rounded-t-2xl">
-                  <span className="text-sm font-semibold text-white">
+                <div className="hidden items-center justify-between border-b border-[#1f1f1f] px-3 py-2 lg:flex lg:rounded-t-2xl">
+                  <span className="text-[13px] font-semibold text-white">
                     {t("common.chats")}
                   </span>
                 </div>
-                <div className="hidden p-2 lg:block">
+                <div className="hidden px-2 pb-2 pt-1 lg:block">
                   <button
                     type="button"
                     onClick={() => void createNewChatThread()}
-                    className="w-full rounded-xl border border-dashed border-[#1f1f1f] bg-[#111111] py-2.5 text-sm font-medium text-[#a3a3a3]"
+                    className="w-full rounded-lg border border-dashed border-[#1f1f1f] bg-[#111111] py-2 text-[13px] font-medium text-[#a3a3a3]"
                   >
                     {t("common.newChat")}
                   </button>
@@ -3073,7 +3129,7 @@ export default function Home() {
               </div>
             </aside>
 
-            <section className="flex min-h-[min(60vh,520px)] min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-[#1f1f1f] bg-[#0a0a0a] shadow-sm">
+            <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-[#1f1f1f] bg-[#0a0a0a] shadow-sm">
               {!isLoading && entries.length === 0 ? (
                 <p className="shrink-0 border-b border-[#1f1f1f] px-4 py-3 text-center text-[13px] text-[#a3a3a3]">
                   {t("common.addEntriesBannerShort")}
@@ -3206,7 +3262,7 @@ export default function Home() {
               </div>
               <form
                 onSubmit={(event) => void handleChatSubmit(event)}
-                className="shrink-0 border-t border-[#1f1f1f] bg-[#0a0a0a] p-3 pb-[max(12px,env(safe-area-inset-bottom))]"
+                className="shrink-0 border-t border-[#1f1f1f] bg-[#0a0a0a] p-2 pb-[max(12px,env(safe-area-inset-bottom))] sm:p-3"
               >
                 <div className="relative">
                   <textarea
@@ -3232,7 +3288,11 @@ export default function Home() {
                         : t("common.askPlaceholder")
                     }
                     disabled={isLoading || entries.length === 0 || !activeThreadId}
-                    className="textarea-empty-inner max-h-40 min-h-11 min-w-0 w-full resize-none break-words rounded-xl border border-[#1f1f1f] bg-[#0a0a0a] pb-12 pl-[14px] pr-14 pt-[14px] text-base text-white outline-none transition focus:border-white focus:ring-0 disabled:cursor-not-allowed disabled:opacity-50"
+                    className={`textarea-empty-inner max-h-40 min-h-11 min-w-0 w-full resize-none break-words rounded-xl border border-[#1f1f1f] bg-[#0a0a0a] pb-12 pt-[14px] text-base text-white outline-none transition focus:border-white focus:ring-0 disabled:cursor-not-allowed disabled:opacity-50 ${
+                      isMounted && isSpeechSupported
+                        ? "pl-14 pr-14"
+                        : "pl-[14px] pr-14"
+                    }`}
                   />
                   <button
                     type="submit"
@@ -3265,7 +3325,31 @@ export default function Home() {
                       <IconArrowUp className="h-[18px] w-[18px] shrink-0" />
                     )}
                   </button>
+                  {isMounted && isSpeechSupported ? (
+                    <button
+                      type="button"
+                      disabled={isLoading || entries.length === 0 || !activeThreadId}
+                      onClick={() => {
+                        if (isListening) {
+                          stopListening();
+                        } else {
+                          startListening("chat");
+                        }
+                      }}
+                      aria-label={isListening ? t("common.voiceStop") : t("common.voiceStart")}
+                      className={`rb-btn-press absolute bottom-[14px] left-[14px] z-[1] inline-flex h-9 min-h-9 min-w-9 items-center justify-center rounded-full text-[11px] font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                        isListening && activeTab === "chat"
+                          ? "animate-pulse bg-red-600 text-white hover:bg-red-500"
+                          : "border border-[#1f1f1f] bg-[#1f1f1f] text-[#a3a3a3] hover:bg-[#2a2a2a]"
+                      }`}
+                    >
+                      {isListening && activeTab === "chat" ? t("common.listening") : t("common.mic")}
+                    </button>
+                  ) : null}
                 </div>
+                {speechErrorMessage ? (
+                  <p className="mt-1.5 text-sm text-red-400">{speechErrorMessage}</p>
+                ) : null}
               </form>
             </section>
           </div>
