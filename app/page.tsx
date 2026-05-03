@@ -3208,46 +3208,66 @@ export default function Home() {
               </div>
               <form
                 onSubmit={(event) => void handleChatSubmit(event)}
-                className="flex shrink-0 flex-col gap-2 border-t border-[#1f1f1f] bg-[#0a0a0a] p-3 pb-[max(12px,env(safe-area-inset-bottom))] sm:flex-row sm:items-end sm:pb-3"
+                className="shrink-0 border-t border-[#1f1f1f] bg-[#0a0a0a] p-3 pb-[max(12px,env(safe-area-inset-bottom))]"
               >
-                <textarea
-                  ref={chatComposerRef}
-                  rows={1}
-                  value={chatInput}
-                  onChange={(event) => {
-                    setChatInput(event.target.value);
-                    if (chatError) {
-                      setChatError(null);
+                <div className="relative">
+                  <textarea
+                    ref={chatComposerRef}
+                    rows={1}
+                    value={chatInput}
+                    onChange={(event) => {
+                      setChatInput(event.target.value);
+                      if (chatError) {
+                        setChatError(null);
+                      }
+                      requestAnimationFrame(adjustChatComposerHeight);
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" && !event.shiftKey) {
+                        event.preventDefault();
+                        void handleChatSubmit();
+                      }
+                    }}
+                    placeholder={
+                      !isLoading && entries.length === 0
+                        ? t("common.chatPlaceholderEntriesFirst")
+                        : t("common.askPlaceholder")
                     }
-                    requestAnimationFrame(adjustChatComposerHeight);
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" && !event.shiftKey) {
-                      event.preventDefault();
-                      void handleChatSubmit();
+                    disabled={isLoading || entries.length === 0 || !activeThreadId}
+                    className="textarea-empty-inner max-h-40 min-h-11 min-w-0 w-full resize-none break-words rounded-xl border border-[#1f1f1f] bg-[#0a0a0a] pb-12 pl-[14px] pr-14 pt-[14px] text-base text-white outline-none transition focus:border-white focus:ring-0 disabled:cursor-not-allowed disabled:opacity-50"
+                  />
+                  <button
+                    type="submit"
+                    disabled={
+                      isChatSending ||
+                      !chatInput.trim() ||
+                      isLoading ||
+                      entries.length === 0 ||
+                      !activeThreadId
                     }
-                  }}
-                  placeholder={
-                    !isLoading && entries.length === 0
-                      ? t("common.chatPlaceholderEntriesFirst")
-                      : t("common.askPlaceholder")
-                  }
-                  disabled={isLoading || entries.length === 0 || !activeThreadId}
-                  className="textarea-empty-inner max-h-40 min-h-11 min-w-0 w-full resize-none break-words rounded-xl border border-[#1f1f1f] bg-[#0a0a0a] px-[14px] py-[14px] text-base text-white outline-none transition focus:border-white focus:ring-0 disabled:cursor-not-allowed disabled:opacity-50"
-                />
-                <button
-                  type="submit"
-                  disabled={
-                    isChatSending ||
-                    !chatInput.trim() ||
-                    isLoading ||
-                    entries.length === 0 ||
-                    !activeThreadId
-                  }
-                  className="rb-btn-press shrink-0 rounded-xl bg-white px-4 py-2.5 text-sm font-medium text-black transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:self-stretch sm:px-6"
-                >
-                  {t("common.send")}
-                </button>
+                    aria-label={t("common.send")}
+                    aria-busy={isChatSending}
+                    className={`rb-btn-press absolute bottom-[14px] right-[14px] z-[1] inline-flex h-9 min-h-9 min-w-9 items-center justify-center rounded-full transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white disabled:cursor-not-allowed ${
+                      isChatSending
+                        ? "!opacity-100 bg-white text-black"
+                        : chatInput.trim() &&
+                            !isLoading &&
+                            entries.length > 0 &&
+                            activeThreadId
+                          ? "bg-white text-black hover:opacity-90"
+                          : "border border-[#1f1f1f] bg-[#141414] text-[#525252] opacity-60"
+                    }`}
+                  >
+                    {isChatSending ? (
+                      <span
+                        className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-black border-t-transparent"
+                        aria-hidden
+                      />
+                    ) : (
+                      <IconArrowUp className="h-[18px] w-[18px] shrink-0" />
+                    )}
+                  </button>
+                </div>
               </form>
             </section>
           </div>
