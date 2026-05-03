@@ -2340,7 +2340,12 @@ export default function Home() {
                     value={text}
                     onChange={(event) => setText(event.target.value)}
                     placeholder={t("common.placeholderEntry")}
-                    className="textarea-empty-inner max-h-[min(40vh,280px)] min-h-[8rem] min-w-0 w-full resize-none overflow-y-auto break-words rounded-xl border border-[#1f1f1f] bg-[#0a0a0a] px-[14px] py-[14px] pr-16 text-[15px] leading-relaxed text-white outline-none transition focus:border-white focus:ring-0"
+                    inputMode="text"
+                    autoComplete="off"
+                    autoCorrect="off"
+                    autoCapitalize="sentences"
+                    spellCheck
+                    className="textarea-empty-inner max-h-[min(40vh,280px)] min-h-[8rem] min-w-0 w-full resize-none overflow-y-auto break-words rounded-xl border border-[#1f1f1f] bg-[#0a0a0a] px-[14px] py-[14px] pr-16 text-base leading-relaxed text-white outline-none transition focus:border-white focus:ring-0"
                   />
                   {isMounted && isSpeechSupported ? (
                     <button
@@ -2844,7 +2849,12 @@ export default function Home() {
                                       value={editingText}
                                       onChange={(event) => setEditingText(event.target.value)}
                                       onClick={(e) => e.stopPropagation()}
-                                      className="textarea-empty-inner mt-2 min-h-24 max-h-[min(40vh,280px)] min-w-0 w-full resize-y overflow-y-auto break-words rounded-xl border border-[#1f1f1f] bg-[#0a0a0a] px-[14px] py-[14px] text-[15px] text-white outline-none transition focus:border-white focus:ring-0"
+                                      inputMode="text"
+                                      autoComplete="off"
+                                      autoCorrect="off"
+                                      autoCapitalize="sentences"
+                                      spellCheck
+                                      className="textarea-empty-inner mt-2 min-h-24 max-h-[min(40vh,280px)] min-w-0 w-full resize-y overflow-y-auto break-words rounded-xl border border-[#1f1f1f] bg-[#0a0a0a] px-[14px] py-[14px] text-base text-white outline-none transition focus:border-white focus:ring-0"
                                     />
                                     <div
                                       className="mt-2 flex flex-wrap gap-1.5"
@@ -3261,7 +3271,7 @@ export default function Home() {
                       : t("common.askPlaceholder")
                   }
                   disabled={isLoading || entries.length === 0 || !activeThreadId}
-                  className="textarea-empty-inner max-h-40 min-h-11 min-w-0 w-full resize-none break-words rounded-xl border border-[#1f1f1f] bg-[#0a0a0a] px-[14px] py-[14px] text-[15px] text-white outline-none transition focus:border-white focus:ring-0 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="textarea-empty-inner max-h-40 min-h-11 min-w-0 w-full resize-none break-words rounded-xl border border-[#1f1f1f] bg-[#0a0a0a] px-[14px] py-[14px] text-base text-white outline-none transition focus:border-white focus:ring-0 disabled:cursor-not-allowed disabled:opacity-50"
                 />
                 <button
                   type="submit"
